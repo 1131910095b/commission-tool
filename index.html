@@ -223,9 +223,9 @@ const SNAPSHOT = [
 ["INV-45707","Ba-Ca-RT-2380",21509.4,"2026-05-01"],["INV-45704","rex-kh-rt-0",605.0,"2026-02-23"]
 ];
 
-const SALES   = {ba:"Barry", ck:"Chike", je:"Jenny", ja:"Jack", rex:"Rex", ha:"Harry"};
+const SALES   = {ba:"Barry", ck:"Chike", je:"Jenny", ja:"Jack", rex:"Rex", ha:"Harry", f:"Fiona"};
 const QUOTERS = {kh:"Khin", sy:"Sysy", sa:"Sandy", ca:"Carine", es:"Estella"};
-const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry"];
+const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry","Fiona"];
 const QUOTER_ORDER  = ["Khin","Sysy","Sandy","Carine","Estella"];
 const GST = 1.1;
 const FY_START = "2025-07-01", FY_END = "2026-06-30";   // 财年 2025-26
@@ -643,7 +643,7 @@ document.getElementById("export").addEventListener("click", ()=>{
 
 document.getElementById("legend").innerHTML=
   "<b>计算规则</b>:金额 = Total ÷ 1.1 (去 GST) − 安装费。<b>销售</b>=第一段(一人);<b>报价</b>=后面所有报价代码(可多人,各自名下都计入)。<br>"+
-  "<b>代码</b>:销售 ba=Barry, ck=Chike, je=Jenny, ja=Jack, rex=Rex, ha=Harry;报价 kh=Khin, sy=Sysy, sa=Sandy, ca=Carine, es=Estella。<br>"+
+  "<b>代码</b>:销售 ba=Barry, ck=Chike, je=Jenny, ja=Jack, rex=Rex, ha=Harry, f=Fiona;报价 kh=Khin, sy=Sysy, sa=Sandy, ca=Carine, es=Estella。<br>"+
   "<b>人员按钮</b>:点上方按钮只看某个销售/报价员的表(销售视图含其「无报价员」单)。点「全部」恢复。<br>"+
   "<b>订金/尾款</b>:Reference 含 deposit/balance 关键词的单,按同客户配对;只有该组全部 Full Paid 才计提成,否则进「待结清」。<b>需导入含 Payment Status 与客户名(Name 列)的完整 CSV 才生效</b>。<br>"+
   "<b>财年总览</b>:月份下拉选「★ 财年总览 2025-26」即按 2025/7/1–2026/6/30 汇总,顶部显示各人员合计表。<br>"+
