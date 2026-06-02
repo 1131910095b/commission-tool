@@ -237,6 +237,8 @@ function parseRef(refRaw, inv){
   let ref = String(refRaw).trim();
   const low0 = ref.toLowerCase();
   ref = ref.replace(/[\(（][^\)）]*[\)）]/g," ");
+  // 去掉"工单号/PO号/NO."及其后面的数字,避免被误当安装费(如 WORK ORDER NO. 17711)
+  ref = ref.replace(/\b(?:work\s*order|w\.?o\.?|p\.?o\.?|order|no)\b\.?\s*#?:?\s*\d+/gi, " ");
   const toks = ref.split(/[-\s;,，]+/).map(t=>t.trim()).filter(Boolean);
   const low  = toks.map(t=>t.toLowerCase());
   if(low.length && SALES[low[0]]) res.sales = SALES[low[0]];
