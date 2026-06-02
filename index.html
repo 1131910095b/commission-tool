@@ -115,11 +115,18 @@
 <div class="wrap">
   <div class="controls">
     <div class="ctl">
-      <label>月份(按 Full Paid 日期)</label>
+      <label>期间(财年 2025-26)</label>
       <select id="month"></select>
     </div>
     <button class="btn-go" id="go">计算</button>
     <button class="btn-ghost" id="syncBtn">⟳ 从 monday 更新</button>
+    <div class="ctl">
+      <label>视图</label>
+      <div style="display:flex;gap:6px">
+        <button class="pbtn active" id="modeCommission">提成表(Full Paid)</button>
+        <button class="pbtn" id="modeBilled">已开单统计(排除Credit)</button>
+      </div>
+    </div>
     <div class="ctl">
       <label>导入最新数据(monday 导出的 CSV)</label>
       <input type="file" id="csv" accept=".csv,text/csv">
@@ -227,6 +234,7 @@ function inFY(fpd){ return fpd && fpd>=FY_START && fpd<=FY_END; }
 
 let DATA = SNAPSHOT.map(r=>({inv:r[0], ref:r[1], total:r[2], fpd:r[3], customer:"", status:""}));
 let selectedPerson = "all";
+let viewMode = "commission";   // "commission" | "billed"
 
 function isDeposit(ref){ return /deposit|订金|定金|押金|预付|\bdep\b/i.test(ref||""); }
 function isBalance(ref){ return /balance|尾款|余款|结清|\bbal\b/i.test(ref||""); }
@@ -271,14 +279,17 @@ function isFullPaid(st){ const s=(st||"").toLowerCase(); return s.includes("full
 function isCredit(st){ const s=(st||"").toLowerCase(); return s.includes("credit")||s.includes("贷项")||s.includes("退"); }
 
 function buildMonths(){
-  const set = new Set(DATA.map(d=>monthOf(d.fpd)));
-  const months = [...set].filter(m=>m!=="无日期").sort().reverse();
+  // 只显示财年(2025/7/1–2026/6/30):财年总览 + 财年内各月
+  const FY_MONTHS = ["2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
+                     "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"];
   const sel = document.getElementById("month"); sel.innerHTML = "";
-  const o0=document.createElement("option"); o0.value="all"; o0.textContent="全部"; sel.appendChild(o0);
   const ofy=document.createElement("option"); ofy.value="fy2025-26"; ofy.textContent="★ 财年总览 2025-26 (7/1–6/30)"; sel.appendChild(ofy);
-  months.forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
-  if(set.has("无日期")){ const o=document.createElement("option"); o.value="无日期"; o.textContent="无日期(未填)"; sel.appendChild(o); }
-  if(months.length) sel.value = months[0];
+  // 只列出数据里出现过、且落在财年内的月份
+  const present = new Set(DATA.map(d=>monthOf(d.fpd)));
+  DATA.forEach(d=>{ if(d.issue) present.add(monthOf(d.issue)); });
+  FY_MONTHS.filter(m=>present.has(m)).reverse().forEach(m=>{
+    const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
+  sel.value = "fy2025-26";   // 默认财年总览
 }
 
 let LAST_RESULT = null;
@@ -327,6 +338,27 @@ function compute(){
   });
 
   LAST_RESULT = {mSel, hasStatus, salesMap, quoterMap, noQuoter, review, skip, held, okCount};
+
+  // ===== 已开单统计(排除 Credit;数据加载时 Credit 已剔除)=====
+  // 不受 Full Paid 过滤影响;按开单日期 Issue Date 做期间筛选(无 issue 日期则只计入"全部")
+  const bSales={}, bQuoter={}, bNoQuoter=[]; let bAllInv=0,bAllTot=0,bAllFee=0,bAllAmt=0;
+  DATA.forEach(d=>{
+    if(mSel==="fy2025-26"){ if(!(d.issue && d.issue>=FY_START && d.issue<=FY_END)) return; }
+    else if(mSel!=="all" && mSel!=="无日期"){ if(!(d.issue && monthOf(d.issue)===mSel)) return; }
+    const p=parseRef(d.ref,d.inv);
+    if(p.status==="skip") return;                 // PO/Amend 不算
+    const amt=amountOf(d.total,p.fee);
+    const rec={inv:d.inv,ref:d.ref,total:d.total,fee:p.fee,amt,sales:p.sales,quoters:p.quoters,
+               neg:amt<0,fpd:d.fpd,issue:d.issue,dep:isDeposit(d.ref),bal:isBalance(d.ref),status:d.status};
+    bAllInv++; bAllTot+=d.total; bAllFee+=p.fee; bAllAmt+=amt;
+    if(p.sales){
+      if(p.quoters.length===0) bNoQuoter.push(rec);
+      else (bSales[p.sales]=bSales[p.sales]||[]).push(rec);
+    }
+    p.quoters.forEach(q=>{ (bQuoter[q]=bQuoter[q]||[]).push(rec); });
+  });
+  LAST_RESULT.billed = {bSales, bQuoter, bNoQuoter, bAllInv, bAllTot, bAllFee, bAllAmt};
+
   buildPersonBar();
   render();
 }
@@ -375,6 +407,7 @@ function groupBlock(name, list, cls, roleTag){
 function render(){
   const R=LAST_RESULT; if(!R) return;
   const out=document.getElementById("out"); out.innerHTML="";
+  if(viewMode==="billed"){ renderBilled(); return; }
   const allSalesSum=Object.values(R.salesMap).flat().reduce((a,r)=>a+r.amt,0);
   const allQuoterSum=Object.values(R.quoterMap).flat().reduce((a,r)=>a+r.amt,0);
   // 总收款/安装费按"发票"去重统计(一张单可能同时在多个报价员名下,避免重复加总)
@@ -436,6 +469,37 @@ function render(){
   out.innerHTML=html;
 }
 
+function renderBilled(){
+  const R=LAST_RESULT, B=R.billed; const out=document.getElementById("out");
+  const periodLabel = R.mSel==="all" ? "全部" : (R.mSel==="fy2025-26" ? "财年 2025-26(按开单日期)" : R.mSel+"(按开单日期)");
+  document.getElementById("stats").innerHTML=
+    `<div class="stat"><div class="k">已开单(单数)</div><div class="v g">${B.bAllInv}</div></div>`+
+    `<div class="stat"><div class="k">已开单 Total(含GST)</div><div class="v y">$${money(B.bAllTot)}</div></div>`+
+    `<div class="stat"><div class="k">安装费合计</div><div class="v y">$${money(B.bAllFee)}</div></div>`+
+    `<div class="stat"><div class="k">金额(去GST去安装)</div><div class="v y">$${money(B.bAllAmt)}</div></div>`;
+
+  const agg=l=>[l.length, l.reduce((a,r)=>a+r.total,0), l.reduce((a,r)=>a+r.fee,0), l.reduce((a,r)=>a+r.amt,0)];
+  const rows=[];
+  SALES_ORDER.forEach(n=>{ if(B.bSales[n]){ rows.push(["销售",n,...agg(B.bSales[n])]); }});
+  QUOTER_ORDER.forEach(n=>{ if(B.bQuoter[n]){ rows.push(["报价",n,...agg(B.bQuoter[n])]); }});
+  if(B.bNoQuoter.length) rows.push(["仅销售(无报价)","—",...agg(B.bNoQuoter)]);
+  const body=rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td class="r num">${r[2]}</td><td class="r num">$${money(r[3])}</td><td class="r num">$${money(r[4])}</td><td class="r num amt">$${money(r[5])}</td></tr>`).join("");
+
+  let html=`<div class="role-band">— 已开单统计(排除 Credit)· ${periodLabel} —</div>`;
+  html+=`<div class="note" style="margin:0 0 14px">已开单 = Payment Status 不是 Credit 的所有单(Invoiced / Full Paid / Over Due / Deposit Received 都算),与提成表(只算 Full Paid)互相独立。金额 = Total ÷ 1.1 − 安装费。</div>`;
+  html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead><tbody>${body}`+
+    `<tr class="total-row"><td colspan="2">全公司合计</td><td class="r num">${B.bAllInv}</td><td class="r num">$${money(B.bAllTot)}</td><td class="r num">$${money(B.bAllFee)}</td><td class="r num amt">$${money(B.bAllAmt)}</td></tr></tbody></table>`;
+
+  // 单人明细
+  if(selectedPerson!=="all"){
+    const role=selectedPerson.role, name=selectedPerson.name;
+    const list = role==="sales" ? (B.bSales[name]||[]) : (B.bQuoter[name]||[]);
+    html+=`<div class="role-band">— ${name} 已开单明细 —</div>`+tableFor(list);
+    if(role==="sales"){ const own=B.bNoQuoter.filter(r=>r.sales===name);
+      if(own.length){ html+=`<div class="role-band">— ${name} 无报价员单 —</div>`+tableFor(own); } }
+  }
+  out.innerHTML=html;
+}
 function tableForReview(list){
   if(!list.length) return '<div class="empty">无</div>';
   let body="";
@@ -473,6 +537,7 @@ document.getElementById("csv").addEventListener("change", e=>{
     const iRef=findCol(head,["reference","参考","备注"]);
     const iTot=findCol(head,["total (aud)","total","总额","金额"]);
     const iFpd=findCol(head,["full paid","付清","fullpaid"]);
+    const iIss=findCol(head,["issue date","issue","开单","开票"]);
     const iSt =findCol(head,["payment status","付款状态","状态","status"]);
     if(iRef<0||iTot<0){ alert("未找到 Reference 或 Total 列。表头:\n"+head.join(" | ")); return; }
     const data=[]; let creditSkipped=0;
@@ -485,6 +550,7 @@ document.getElementById("csv").addEventListener("change", e=>{
       data.push({ inv: invV || (nameV.match(/INV-?\d+/i)?(nameV.match(/INV-?\d+/i)[0]):("行"+r)),
                   ref: iRef>=0?row[iRef]:"", total:tot,
                   fpd: iFpd>=0?normDate(row[iFpd]):null,
+                  issue: iIss>=0?normDate(row[iIss]):null,
                   status: st,
                   customer: stripCustomer(nameV, invV) }); }
     if(!data.length){ alert("没有可用数据行"); return; }
@@ -525,6 +591,11 @@ document.getElementById("legend").innerHTML=
 
 /* init:优先读取 data.json(GitHub Pages 由 Action 生成),否则用内置快照 */
 document.getElementById("go").addEventListener("click", ()=>{ compute(); });
+(function(){
+  const mc=document.getElementById("modeCommission"), mb=document.getElementById("modeBilled");
+  mc.addEventListener("click", ()=>{ viewMode="commission"; mc.classList.add("active"); mb.classList.remove("active"); render(); });
+  mb.addEventListener("click", ()=>{ viewMode="billed"; mb.classList.add("active"); mc.classList.remove("active"); render(); });
+})();
 (async function init(){
   try{
     const r=await fetch("data.json",{cache:"no-store"});
@@ -532,7 +603,7 @@ document.getElementById("go").addEventListener("click", ()=>{ compute(); });
       const j=await r.json();
       if(Array.isArray(j)&&j.length){
         DATA=j.filter(d=>!isCredit(d.status)).map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
-          fpd:d.fpd||null, status:d.status||"", customer:d.customer||""}));
+          fpd:d.fpd||null, issue:d.issue||null, status:d.status||"", customer:d.customer||""}));
         document.getElementById("datasrc").textContent="数据来源:data.json("+DATA.length+" 行)";
       }
     }
@@ -564,7 +635,7 @@ document.getElementById("syncBtn").addEventListener("click", async ()=>{
     const json=await res.json();   // 期望格式: [{inv,ref,total,fpd,status,customer}, ...]
     if(!Array.isArray(json)||!json.length) throw new Error("返回数据为空或格式不对");
     DATA=json.filter(d=>!isCredit(d.status)).map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
-      fpd:d.fpd||null, status:d.status||"", customer:d.customer||""}));
+      fpd:d.fpd||null, issue:d.issue||null, status:d.status||"", customer:d.customer||""}));
     document.getElementById("datasrc").textContent="已从 monday 更新("+DATA.length+" 行 · "+new Date().toLocaleString()+")";
     selectedPerson="all"; buildMonths(); compute();
     alert("更新成功:"+DATA.length+" 行。");
