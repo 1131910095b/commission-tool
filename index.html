@@ -437,7 +437,7 @@ function depositPaidTable(who){
     else list = list.filter(r=>(r.quoters||[]).includes(who.name));
     title = who.name + " 名下 · 定金/尾款(Full Paid)";
   }
-  let html = `<div class="role-band">— 定金/尾款已支付清单(${title})—</div>`;
+  let html = `<div class="group-title special"><h2>定金/尾款已支付清单</h2><span class="cnt">${list.length} 单 · ${title}</span></div>`;
   if(!list.length) return html + '<div class="empty">无记录(需含客户名与 Payment Status 的完整数据)</div>';
   let totalSum=0, feeSum=0, amtSum=0, body="";
   list.forEach(r=>{ totalSum+=r.total; feeSum+=r.fee; amtSum+=r.amt;
