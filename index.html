@@ -224,9 +224,9 @@ const SNAPSHOT = [
 ];
 
 const SALES   = {ba:"Barry", ck:"Chike", je:"Jenny", ja:"Jack", rex:"Rex", ha:"Harry"};
-const QUOTERS = {kh:"Khin", sy:"Sysy", sa:"Sandy", ca:"Carine"};
+const QUOTERS = {kh:"Khin", sy:"Sysy", sa:"Sandy", ca:"Carine", es:"Estella"};
 const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry"];
-const QUOTER_ORDER  = ["Khin","Sysy","Sandy","Carine"];
+const QUOTER_ORDER  = ["Khin","Sysy","Sandy","Carine","Estella"];
 const GST = 1.1;
 const FY_START = "2025-07-01", FY_END = "2026-06-30";   // 财年 2025-26
 const BACKEND_URL = "data.json";   // GitHub Pages 上由 Action 定时生成;留空则「更新」按钮回退为 CSV 导入
@@ -341,7 +341,7 @@ function compute(){
 
   // ===== 已开单统计(排除 Credit;数据加载时 Credit 已剔除)=====
   // 不受 Full Paid 过滤影响;按开单日期 Issue Date 做期间筛选(无 issue 日期则只计入"全部")
-  const bSales={}, bQuoter={}, bNoQuoter=[]; let bAllInv=0,bAllTot=0,bAllFee=0,bAllAmt=0;
+  const bSales={}, bQuoter={}, bNoQuoter=[], bAll=[]; let bAllInv=0,bAllTot=0,bAllFee=0,bAllAmt=0;
   DATA.forEach(d=>{
     if(mSel==="fy2025-26"){ if(!(d.issue && d.issue>=FY_START && d.issue<=FY_END)) return; }
     else if(mSel!=="all" && mSel!=="无日期"){ if(!(d.issue && monthOf(d.issue)===mSel)) return; }
@@ -350,14 +350,15 @@ function compute(){
     const amt=amountOf(d.total,p.fee);
     const rec={inv:d.inv,ref:d.ref,total:d.total,fee:p.fee,amt,sales:p.sales,quoters:p.quoters,
                neg:amt<0,fpd:d.fpd,issue:d.issue,dep:isDeposit(d.ref),bal:isBalance(d.ref),status:d.status};
-    bAllInv++; bAllTot+=d.total; bAllFee+=p.fee; bAllAmt+=amt;
+    bAllInv++; bAllTot+=d.total; bAllFee+=p.fee; bAllAmt+=amt; bAll.push(rec);
     if(p.sales){
       if(p.quoters.length===0) bNoQuoter.push(rec);
       else (bSales[p.sales]=bSales[p.sales]||[]).push(rec);
     }
     p.quoters.forEach(q=>{ (bQuoter[q]=bQuoter[q]||[]).push(rec); });
   });
-  LAST_RESULT.billed = {bSales, bQuoter, bNoQuoter, bAllInv, bAllTot, bAllFee, bAllAmt};
+  bAll.sort((a,b)=>String(b.issue||"").localeCompare(String(a.issue||"")));
+  LAST_RESULT.billed = {bSales, bQuoter, bNoQuoter, bAll, bAllInv, bAllTot, bAllFee, bAllAmt};
 
   buildPersonBar();
   render();
@@ -393,6 +394,20 @@ function tableFor(list){
       `<td class="r num">${money(r.total)}</td><td class="r num fee">${money(r.fee)}</td>`+
       `<td class="r num">${money(r.amt)}${r.neg?'<span class="flag">负</span>':''}</td></tr>`; });
   return `<table><thead><tr><th>单号</th><th>Reference</th><th>付款日期</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead>`+
+    `<tbody>${body}<tr class="total-row"><td colspan="3">合计 (${list.length} 单)</td>`+
+    `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
+    `<td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
+}
+// 已开单明细:显示开单日期 Issue Date(而非付款日期)
+function tableForBilled(list){
+  if(!list.length) return '<div class="empty">无记录</div>';
+  let sum=0, totalSum=0, feeSum=0, body="";
+  list.forEach(r=>{ sum+=r.amt; totalSum+=r.total; feeSum+=r.fee;
+    body+=`<tr><td>${r.inv}${tagFor(r)}</td><td class="ref">${escapeHtml(r.ref)}</td>`+
+      `<td class="num">${fmtDate(r.issue)}</td>`+
+      `<td class="r num">${money(r.total)}</td><td class="r num fee">${money(r.fee)}</td>`+
+      `<td class="r num">${money(r.amt)}${r.neg?'<span class="flag">负</span>':''}</td></tr>`; });
+  return `<table><thead><tr><th>单号</th><th>Reference</th><th>开单日期</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead>`+
     `<tbody>${body}<tr class="total-row"><td colspan="3">合计 (${list.length} 单)</td>`+
     `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
     `<td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
@@ -490,13 +505,15 @@ function renderBilled(){
   html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead><tbody>${body}`+
     `<tr class="total-row"><td colspan="2">全公司合计</td><td class="r num">${B.bAllInv}</td><td class="r num">$${money(B.bAllTot)}</td><td class="r num">$${money(B.bAllFee)}</td><td class="r num amt">$${money(B.bAllAmt)}</td></tr></tbody></table>`;
 
-  // 单人明细
+  // 明细(含开单日期列)
   if(selectedPerson!=="all"){
     const role=selectedPerson.role, name=selectedPerson.name;
     const list = role==="sales" ? (B.bSales[name]||[]) : (B.bQuoter[name]||[]);
-    html+=`<div class="role-band">— ${name} 已开单明细 —</div>`+tableFor(list);
+    html+=`<div class="role-band">— ${name} 已开单明细 —</div>`+tableForBilled(list);
     if(role==="sales"){ const own=B.bNoQuoter.filter(r=>r.sales===name);
-      if(own.length){ html+=`<div class="role-band">— ${name} 无报价员单 —</div>`+tableFor(own); } }
+      if(own.length){ html+=`<div class="role-band">— ${name} 无报价员单 —</div>`+tableForBilled(own); } }
+  } else {
+    html+=`<div class="role-band">— 已开单逐单明细(按开单日期)—</div>`+tableForBilled(B.bAll);
   }
   out.innerHTML=html;
 }
@@ -583,6 +600,7 @@ document.getElementById("export").addEventListener("click", ()=>{
 
 document.getElementById("legend").innerHTML=
   "<b>计算规则</b>:金额 = Total ÷ 1.1 (去 GST) − 安装费。<b>销售</b>=第一段(一人);<b>报价</b>=后面所有报价代码(可多人,各自名下都计入)。<br>"+
+  "<b>代码</b>:销售 ba=Barry, ck=Chike, je=Jenny, ja=Jack, rex=Rex, ha=Harry;报价 kh=Khin, sy=Sysy, sa=Sandy, ca=Carine, es=Estella。<br>"+
   "<b>人员按钮</b>:点上方按钮只看某个销售/报价员的表(销售视图含其「无报价员」单)。点「全部」恢复。<br>"+
   "<b>订金/尾款</b>:Reference 含 deposit/balance 关键词的单,按同客户配对;只有该组全部 Full Paid 才计提成,否则进「待结清」。<b>需导入含 Payment Status 与客户名(Name 列)的完整 CSV 才生效</b>。<br>"+
   "<b>财年总览</b>:月份下拉选「★ 财年总览 2025-26」即按 2025/7/1–2026/6/30 汇总,顶部显示各人员合计表。<br>"+
