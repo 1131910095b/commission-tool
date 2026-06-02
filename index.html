@@ -360,6 +360,20 @@ function compute(){
   bAll.sort((a,b)=>String(b.issue||"").localeCompare(String(a.issue||"")));
   LAST_RESULT.billed = {bSales, bQuoter, bNoQuoter, bAll, bAllInv, bAllTot, bAllFee, bAllAmt};
 
+  // ===== 定金已支付清单(全公司:Reference 含 deposit + 状态 Full Paid)=====
+  const depPaid=[];
+  DATA.forEach(d=>{
+    if(!(isDeposit(d.ref) && isFullPaid(d.status))) return;
+    if(mSel==="fy2025-26"){ if(!inFY(d.fpd)) return; }
+    else if(mSel!=="all" && mSel!=="无日期"){ if(monthOf(d.fpd)!==mSel) return; }
+    const p=parseRef(d.ref,d.inv);
+    depPaid.push({inv:d.inv, ref:d.ref, total:d.total, fee:p.fee, amt:amountOf(d.total,p.fee),
+                  fpd:d.fpd, issue:d.issue, customer:d.customer, sales:p.sales||"—",
+                  quoters:p.quoters, neg:amountOf(d.total,p.fee)<0, dep:true, bal:false, status:d.status});
+  });
+  depPaid.sort((a,b)=>String(b.fpd||"").localeCompare(String(a.fpd||"")));
+  LAST_RESULT.depPaid = depPaid;
+
   buildPersonBar();
   render();
 }
@@ -411,6 +425,25 @@ function tableForBilled(list){
     `<tbody>${body}<tr class="total-row"><td colspan="3">合计 (${list.length} 单)</td>`+
     `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
     `<td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
+}
+// 定金已支付清单(全公司)— 含销售/客户/开单日期/付款日期
+function depositPaidTable(){
+  const list = (LAST_RESULT && LAST_RESULT.depPaid) || [];
+  let html = `<div class="role-band">— 定金已支付清单(全公司 · Reference 含 deposit 且 Full Paid)—</div>`;
+  if(!list.length) return html + '<div class="empty">无记录(需含客户名与 Payment Status 的完整数据)</div>';
+  let totalSum=0, feeSum=0, amtSum=0, body="";
+  list.forEach(r=>{ totalSum+=r.total; feeSum+=r.fee; amtSum+=r.amt;
+    body+=`<tr><td>${r.inv}</td><td>${escapeHtml(r.customer||"")}</td><td><b>${r.sales}</b></td>`+
+      `<td class="ref">${escapeHtml(r.ref)}</td>`+
+      `<td class="num">${fmtDate(r.issue)}</td><td class="num">${fmtDate(r.fpd)}</td>`+
+      `<td class="r num">${money(r.total)}</td><td class="r num fee">${money(r.fee)}</td>`+
+      `<td class="r num">${money(r.amt)}${r.neg?'<span class="flag">负</span>':''}</td></tr>`; });
+  html+=`<table><thead><tr><th>单号</th><th>客户</th><th>销售</th><th>Reference</th><th>开单日期</th><th>付款日期</th>`+
+    `<th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead><tbody>${body}`+
+    `<tr class="total-row"><td colspan="6">合计 (${list.length} 单)</td>`+
+    `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
+    `<td class="r num amt">${money(amtSum)}</td></tr></tbody></table>`;
+  return html;
 }
 function groupBlock(name, list, cls, roleTag){
   const sum=list.reduce((a,r)=>a+r.amt,0);
@@ -481,6 +514,7 @@ function render(){
   html+=`<div class="group-title review"><h2>需人工核对</h2><span class="cnt">未识别销售/报价员</span></div>`+tableForReview(R.review);
   html+=`<div class="group-title review"><h2>已跳过(非提成)</h2><span class="cnt">PO / Amend</span></div>`+tableForReview(R.skip);
   html+=`</details>`;
+  html+=depositPaidTable();
   out.innerHTML=html;
 }
 
