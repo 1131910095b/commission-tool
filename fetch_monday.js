@@ -66,17 +66,18 @@ function mapItem(it) {
 
 (async () => {
   const out = [];
+  const isCredit = s => /credit|贷项|退/i.test(s || "");
   let data = await gql(Q_FIRST, { board: BOARD_ID });
   let page = data.boards[0].items_page;
-  page.items.forEach(it => out.push(mapItem(it)));
+  page.items.forEach(it => { const m = mapItem(it); if (!isCredit(m.status)) out.push(m); });
   let cursor = page.cursor;
   while (cursor) {
     const d = await gql(Q_NEXT, { cursor });
     const np = d.next_items_page;
-    np.items.forEach(it => out.push(mapItem(it)));
+    np.items.forEach(it => { const m = mapItem(it); if (!isCredit(m.status)) out.push(m); });
     cursor = np.cursor;
   }
   const fs = await import("node:fs");
   fs.writeFileSync("data.json", JSON.stringify(out));
-  console.log(`已写入 data.json:${out.length} 行`);
+  console.log(`已写入 data.json:${out.length} 行(已剔除 Credit)`);
 })().catch(e => { console.error(e); process.exit(1); });
