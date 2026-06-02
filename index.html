@@ -268,6 +268,7 @@ function amountOf(total, fee){ return Math.round((total/GST - fee)*100)/100; }
 function money(n){ return n.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function monthOf(fpd){ return fpd ? fpd.slice(0,7) : "无日期"; }
 function isFullPaid(st){ const s=(st||"").toLowerCase(); return s.includes("full paid")||s.includes("付清"); }
+function isCredit(st){ const s=(st||"").toLowerCase(); return s.includes("credit")||s.includes("贷项")||s.includes("退"); }
 
 function buildMonths(){
   const set = new Set(DATA.map(d=>monthOf(d.fpd)));
@@ -474,20 +475,22 @@ document.getElementById("csv").addEventListener("change", e=>{
     const iFpd=findCol(head,["full paid","付清","fullpaid"]);
     const iSt =findCol(head,["payment status","付款状态","状态","status"]);
     if(iRef<0||iTot<0){ alert("未找到 Reference 或 Total 列。表头:\n"+head.join(" | ")); return; }
-    const data=[];
+    const data=[]; let creditSkipped=0;
     for(let r=1;r<rows.length;r++){ const row=rows[r];
+      const st = iSt>=0?(row[iSt]||""):"";
+      if(isCredit(st)){ creditSkipped++; continue; }   // Credit 单不导入
       const invV = iInv>=0?(row[iInv]||"").trim():"";
       const nameV= iName>=0?(row[iName]||"").trim():"";
       const tot=parseFloat(String(row[iTot]||"").replace(/[^0-9.\-]/g,""))||0;
       data.push({ inv: invV || (nameV.match(/INV-?\d+/i)?(nameV.match(/INV-?\d+/i)[0]):("行"+r)),
                   ref: iRef>=0?row[iRef]:"", total:tot,
                   fpd: iFpd>=0?normDate(row[iFpd]):null,
-                  status: iSt>=0?(row[iSt]||""):"",
+                  status: st,
                   customer: stripCustomer(nameV, invV) }); }
     if(!data.length){ alert("没有可用数据行"); return; }
     DATA=data;
     const withStatus=data.filter(d=>d.status).length;
-    document.getElementById("datasrc").textContent="已导入 CSV("+data.length+" 行"+(withStatus?"，含状态 → 启用结清判断":"，无状态列 → 全部按已付清处理")+")";
+    document.getElementById("datasrc").textContent="已导入 CSV("+data.length+" 行"+(creditSkipped?"，已剔除 "+creditSkipped+" 张 Credit":"")+(withStatus?"，含状态":"")+")";
     selectedPerson="all"; buildMonths(); compute();
     alert("导入成功："+data.length+" 行。已重新计算。");
   }catch(err){ alert("解析 CSV 失败："+err.message); } };
@@ -528,7 +531,7 @@ document.getElementById("go").addEventListener("click", ()=>{ compute(); });
     if(r.ok){
       const j=await r.json();
       if(Array.isArray(j)&&j.length){
-        DATA=j.map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
+        DATA=j.filter(d=>!isCredit(d.status)).map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
           fpd:d.fpd||null, status:d.status||"", customer:d.customer||""}));
         document.getElementById("datasrc").textContent="数据来源:data.json("+DATA.length+" 行)";
       }
@@ -560,7 +563,7 @@ document.getElementById("syncBtn").addEventListener("click", async ()=>{
     if(!res.ok) throw new Error("HTTP "+res.status);
     const json=await res.json();   // 期望格式: [{inv,ref,total,fpd,status,customer}, ...]
     if(!Array.isArray(json)||!json.length) throw new Error("返回数据为空或格式不对");
-    DATA=json.map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
+    DATA=json.filter(d=>!isCredit(d.status)).map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
       fpd:d.fpd||null, status:d.status||"", customer:d.customer||""}));
     document.getElementById("datasrc").textContent="已从 monday 更新("+DATA.length+" 行 · "+new Date().toLocaleString()+")";
     selectedPerson="all"; buildMonths(); compute();
