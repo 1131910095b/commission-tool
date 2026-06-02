@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACE SIGN · 收款明细分配表</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#161b22; --panel2:#1b222c; --line:#2a323d;
+    --ink:#e6edf3; --mut:#8b97a6; --acc:#ffb000; --acc2:#3fb950; --red:#ff6b6b;
+    --blue:#388bfd;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    font-size:14px;line-height:1.5}
+  .num{font-family:"SFMono-Regular",ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;
+    font-variant-numeric:tabular-nums}
+  header{padding:22px 28px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#11161d,#0e1116);position:sticky;top:0;z-index:10}
+  h1{margin:0;font-size:20px;letter-spacing:.5px;font-weight:700}
+  h1 .b{color:var(--acc)}
+  .sub{color:var(--mut);font-size:12.5px;margin-top:4px}
+  .wrap{padding:22px 28px;max-width:1120px;margin:0 auto}
+  .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+  .ctl{display:flex;flex-direction:column;gap:6px}
+  .ctl label{font-size:11.5px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px}
+  select,button,input[type=file]::file-selector-button{
+    background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:9px 12px;font-size:13.5px;cursor:pointer}
+  select{min-width:150px}
+  .btn-go{background:var(--acc);color:#1a1200;font-weight:700;border:none;padding:11px 22px;font-size:14px}
+  .btn-go:hover{filter:brightness(1.07)}
+  .btn-ghost{background:transparent}
+  .btn-ghost:hover{border-color:var(--acc)}
+  input[type=file]{color:var(--mut);font-size:12px;max-width:230px}
+  .stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 16px;min-width:120px}
+  .stat .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .stat .v{font-size:20px;font-weight:700;margin-top:3px}
+  .stat .v.g{color:var(--acc2)} .stat .v.y{color:var(--acc)}
+  .group-title{display:flex;align-items:baseline;gap:10px;margin:26px 0 10px;
+    border-left:3px solid var(--acc);padding-left:12px}
+  .group-title.q{border-color:var(--blue)} .group-title.s{border-color:var(--acc)}
+  .group-title.special{border-color:var(--red)} .group-title.review{border-color:var(--mut)}
+  .group-title h2{margin:0;font-size:16px}
+  .group-title .cnt{color:var(--mut);font-size:12.5px}
+  .role-band{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:1px;
+    margin:30px 0 4px;font-weight:700}
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:6px}
+  th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px}
+  th{background:var(--panel2);color:var(--mut);font-weight:600;font-size:11.5px;
+    text-transform:uppercase;letter-spacing:.5px}
+  td.r,th.r{text-align:right}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#1a212b}
+  .total-row td{font-weight:700;background:#10151c;border-top:2px solid var(--line)}
+  .total-row .amt{color:var(--acc)}
+  .ref{color:var(--mut);font-size:12px}
+  .fee{color:var(--mut)}
+  .empty{color:var(--mut);padding:14px;text-align:center;font-style:italic}
+  .flag{color:var(--red);font-size:11px;margin-left:6px}
+  details{margin-bottom:10px}
+  summary{cursor:pointer;color:var(--mut);font-size:12.5px;padding:6px 0}
+  .note{color:var(--mut);font-size:12px;margin:14px 0;padding:12px 14px;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;line-height:1.7}
+  .note b{color:var(--ink)}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.cols{grid-template-columns:1fr}}
+  .src{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:5px;padding:1px 5px;margin-left:6px}
+  .personbar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+  .pbtn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);
+    border-radius:20px;padding:7px 15px;font-size:13px;cursor:pointer}
+  .pbtn:hover{border-color:var(--acc)}
+  .pbtn.active{background:var(--acc);color:#1a1200;border-color:var(--acc);font-weight:700}
+  .pbtn.q.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+  .pbtn .role{font-size:10px;color:var(--mut);margin-right:5px;text-transform:uppercase}
+  .pbtn.active .role{color:inherit;opacity:.7}
+  .pbar-label{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;
+    align-self:center;margin-right:4px}
+  .tag{font-size:10px;border-radius:5px;padding:1px 6px;margin-left:6px;font-weight:700}
+  .tag.dep{background:#3a2a00;color:var(--acc)} .tag.bal{background:#0a2e1a;color:var(--acc2)}
+  .held .group-title{border-color:var(--acc)}
+  #gate{position:fixed;inset:0;background:#0b0e13;z-index:100;display:flex;align-items:center;justify-content:center}
+  .gate-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:36px 34px;width:340px;text-align:center}
+  .gate-title{font-size:20px;font-weight:700}
+  .gate-title{color:var(--acc)}
+  .gate-sub{color:var(--mut);font-size:13px;margin:6px 0 18px}
+  #gatePw{width:100%;padding:11px 12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;color:var(--ink);font-size:14px;margin-bottom:12px}
+  #gateBtn{width:100%;background:var(--acc);color:#1a1200;border:none;border-radius:8px;
+    padding:11px;font-size:14px;font-weight:700;cursor:pointer}
+  .gate-err{color:var(--red);font-size:12.5px;margin-top:10px;min-height:16px}
+  .gate-note{color:var(--mut);font-size:11px;margin-top:16px;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="gate">
+  <div class="gate-box">
+    <div class="gate-title">ACE SIGN · 提成查询</div>
+    <div class="gate-sub">请输入访问密码</div>
+    <input type="password" id="gatePw" placeholder="密码" autocomplete="off">
+    <button id="gateBtn">进入</button>
+    <div class="gate-err" id="gateErr"></div>
+    <div class="gate-note">提示:此为基础访问门,非银行级安全。真正的外部加密访问请配合服务器端密码保护。</div>
+  </div>
+</div>
+<header>
+  <h1><span class="b">//</span> ACE SIGN · 收款明细分配表</h1>
+  <div class="sub">Full Paid 发票按销售员 / 报价员拆分 · 金额 = Total ÷ 1.1 − 安装费 · <span id="datasrc">内置快照</span></div>
+</header>
+
+<div class="wrap">
+  <div class="controls">
+    <div class="ctl">
+      <label>月份(按 Full Paid 日期)</label>
+      <select id="month"></select>
+    </div>
+    <button class="btn-go" id="go">计算</button>
+    <button class="btn-ghost" id="syncBtn">⟳ 从 monday 更新</button>
+    <div class="ctl">
+      <label>导入最新数据(monday 导出的 CSV)</label>
+      <input type="file" id="csv" accept=".csv,text/csv">
+    </div>
+    <button class="btn-ghost" id="export">导出结果 CSV</button>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div id="personbar" class="personbar"></div>
+  <div id="out"></div>
+
+  <div class="note" id="legend"></div>
+</div>
+
+<script>
+/* ---------- 内置数据快照 (Full Paid, 2026-02 ~ 2026-05) ----------
+   字段: [单号, Reference, Total(AUD), Full Paid 日期]  */
+const SNAPSHOT = [
+["INV-45933","je-kh-em-1094",3003.0,null],["INV-45936","je-rt-0",495.0,"2026-05-22"],
+["INV-45925","je-sa-em-17",264.0,"2026-05-20"],["INV-45927","je-sa-rt-0",1430.0,"2026-05-20"],
+["INV-45928","Ja-Ti-250",592.9,"2026-05-22"],["INV-45926","je-sa-ph-0",110.0,"2026-05-18"],
+["INV-45924","Ck-Sa-Rt-15",264.0,"2026-05-21"],["INV-45921","je-sy-rt-500",1507.0,null],
+["INV-45922","je-sa-rt-150",462.0,"2026-05-20"],["INV-45920","je-em-197",1579.05,"2026-05-18"],
+["INV-45893","ba-ca-rt-1500 ( Woodonga Banner)",11687.5,"2026-05-14"],
+["INV-45917","Ba-sy-rt-100 ( Eureka & Bendigo Flag)",1403.6,"2026-05-14"],
+["INV-45916","je-rt-0",165.0,"2026-05-15"],["INV-45915","je-sa-0",550.0,"2026-05-14"],
+["INV-45911","ck-sa-Rt",22605.0,null],["INV-45908","TI-0",739.2,"2026-05-11"],
+["INV-45906","Ba-sa-RT-0",770.0,"2026-05-21"],["INV-45900","je-0",341.0,"2026-05-08"],
+["INV-45903","je-sa-em-150",440.0,"2026-05-11"],["INV-45899","ck-sa-200 Rt",385.0,"2026-05-09"],
+["INV-45897","Ja-sy-ph-0",537.9,"2026-05-08"],["INV-45890","Ja-sa-ma-980",1078.0,"2026-05-22"],
+["INV-45888","Ba-Ca-Rt-600(deposit)",1986.05,"2026-05-05"],["INV-45880","ck-kh-850 We",1786.4,"2026-05-25"],
+["INV-45876","Ja-Sy-Ph-60",286.0,"2026-05-05"],["INV-45877","Ti-0",126.5,"2026-05-01"],
+["INV-45879","Ja-Kh-Ja-637",6546.49,null],["INV-45885","ck-sa-0 Rt",3650.9,null],
+["INV-45883","ck-sa-0 Ph",335.5,"2026-05-01"],["INV-45875","Ja-Ca-ph-0",343.2,"2026-05-01"],
+["INV-45878","ck-sa-3790 Re 50 Deposit",11000.0,"2026-05-15"],["INV-45872","je-kh-wk-680",4279.0,"2026-05-20"],
+["INV-45868","Ja-Kh-ph-902",2171.4,"2026-05-04"],["INV-45870","P20251013008",484.19,"2026-05-21"],
+["INV-45865","ck-sa-580 Rt",638.0,"2026-05-05"],["INV-45864","ck-sa-0 Rt",308.0,"2026-05-11"],
+["INV-45867","Ja-sy-ph-",550.0,"2026-05-06"],["INV-45866","Ja-sy-ph-1000",3322.0,"2026-04-29"],
+["INV-45861","je-em-0",269.5,"2026-04-30"],["INV-45862","je-sa-150-em",715.0,"2026-05-11"],
+["INV-45857","ja-ca-Wk 200",1760.0,"2026-05-06"],["INV-45856","ck-150 out",165.0,"2026-04-24"],
+["INV-45855","PO 4505219633; je-ca-rt-0",148.5,"2026-04-29"],["INV-45854","je-0",121.0,"2026-04-23"],
+["INV-45851","Ja-Ca-45851",602.8,"2026-04-24"],["INV-45843","je-sa-500-re",3520.0,"2026-05-07"],
+["INV-45844","je-ca-em-400",808.5,"2026-05-10"],["INV-45842","Ba-Ca-RT-0",214.5,"2026-05-19"],
+["INV-45838","titi-rt-20",126.5,"2026-04-22"],["INV-45840","ck-sa-0 Rt",5979.87,"2026-04-30"],
+["INV-45834","je-em-52",533.5,"2026-04-16"],["INV-45832","je-ca-ph-980",4062.3,null],
+["INV-45836","ck-150 Rt",165.0,"2026-04-16"],["INV-45833","je-ca-re-0",528.0,"2026-04-16"],
+["INV-45830","je-kh-ph-1290",4654.1,"2026-05-06"],["INV-45829","je-sa-rt-150",418.0,"2026-04-23"],
+["INV-45831","je-kh-rt-773",850.3,"2026-04-16"],["INV-45825","Amend-45799",7766.0,"2026-05-13"],
+["INV-45826","Ha-Sa-Wk-0",110.0,"2026-04-10"],["INV-45820","Ck-sy-0 Rt",2682.01,null],
+["INV-45823","ja-kh-249 Wk",618.2,"2026-04-09"],["INV-45819","je-sa-em-0",3894.0,"2026-04-13"],
+["INV-45818","Ck-Sa-3483 Rt",33459.45,"2026-05-11"],["INV-45816","je-sa-rt-260",715.0,"2026-04-10"],
+["INV-45787","Ba-Ca-RT-1500",7194.0,"2026-05-07"],["INV-45814","Ja-sy-180",4323.0,"2026-04-09"],
+["INV-45812","je-rt-o",165.0,"2026-04-02"],["INV-45811","je-em-35",1325.5,"2026-04-10"],
+["INV-45810","titi-0",387.2,"2026-04-08"],["INV-45809","je-sa-rt-",280.5,"2026-04-02"],
+["INV-45808","Ja-Sa-Rt-0",5951.0,"2026-03-31"],["INV-45807","je-ca-wx-250",737.0,"2026-04-16"],
+["INV-45801","Ba-Ca-RT-0",715.0,"2026-03-31"],["INV-45815","T-0",137.5,"2026-04-06"],
+["INV-45802","Rex-Sa-Rt-0",729.3,"2026-04-10"],["INV-45805","Ba-H-RF-518",518.01,"2026-04-02"],
+["INV-45806","Ba-Kh-RT-0",330.0,"2026-04-14"],["INV-45804","je-ti-em-113",440.0,"2026-03-30"],
+["INV-45800","ck-ca-500 Rt",1083.5,"2026-05-11"],["INV-45796","Ck-Sa-0 Rt Deposit",3300.0,"2026-03-27"],
+["INV-45797","Ck-Sa-1100 Rt Balance",4235.0,"2026-04-17"],["INV-45799","Sy-RT-1500",9454.5,"2026-05-28"],
+["INV-45795","je-sa-ph-72",1188.0,"2026-04-07"],["INV-45792","ck-sy-1600 Rt",4494.6,"2026-04-08"],
+["INV-45793","ba-ca-rt-0",88.0,"2026-04-15"],["INV-45791","Ja-sy-50",324.5,"2026-05-14"],
+["INV-45789","Ja-wk-0",308.0,"2026-03-25"],["INV-45786","Ba-Ca-RT-400",1540.0,"2026-04-16"],
+["INV-45783","Ha-Sa-0",302.5,"2026-03-24"],["INV-45781","rex-ti-rt-0",363.0,"2026-05-20"],
+["INV-45782","Ck-Ca-Rt-0",253.0,"2026-05-11"],["INV-45780","Ja-Sa-0 Rt",511.5,"2026-05-08"],
+["INV-45778","Ja-Kh-780 Em",4209.7,"2026-03-20"],["INV-45774","Ck-Sa-Rt-300",1045.0,"2026-04-09"],
+["INV-45776","Ba-Ca-WK-0",132.0,null],["INV-45773","je-ti-rt-300",746.9,"2026-03-26"],
+["INV-45772","Je-sa-rt-1100 (PO 4505230209）",5232.7,"2026-04-08"],["INV-45771","Ba-Ca-RT-800",5137.0,"2026-04-16"],
+["INV-45768","Ba-Kh-RT-250",1546.6,"2026-04-16"],["INV-45769","Ck-Ca-Rt-7950",32996.7,"2026-05-14"],
+["INV-45766","Ha-Sa-Rt-300",1078.0,"2026-05-25"],["INV-45767","je-titi-ph-0",434.5,"2026-03-16"],
+["INV-45765","Sy-RT-0",627.0,"2026-04-08"],["INV-45762","Ba-Ca-WK-0",66.0,null],
+["INV-45763","ck-sa-6345 Rt",25907.03,"2026-04-13"],["INV-45761","Ba-Ca-0",990.0,"2026-03-31"],
+["INV-45760","P20260225016",412.5,"2026-04-29"],["INV-45754","je-titi-rt-0",524.7,"2026-03-13"],
+["INV-45757","ck-sa-200 Rt",1402.5,"2026-03-13"],["INV-45753","rex-sy-ph-0",781.0,null],
+["INV-45755","Ba-Ca-RT-1280",7480.0,"2026-03-31"],["INV-45758","ck-sa-250 Rt",715.0,"2026-05-11"],
+["INV-45759","rex-sy-ph-0",913.0,"2026-03-18"],["INV-45752","je-sy-ph-1330",7122.5,"2026-05-20"],
+["INV-45748","ck-sa-0 Rt",1815.0,"2026-03-11"],["INV-45749","ck-sa-800 Rt",4345.0,"2026-05-04"],
+["INV-45751","ck-sa-840 Rt",3866.5,"2026-03-19"],["INV-45744","je-sa-ph-0",148.5,"2026-03-10"],
+["INV-45746","Ti-0",297.0,"2026-03-11"],["INV-45745","Ba-Ca-EM-0（Deposit）",4005.1,"2026-03-17"],
+["INV-45741","P20260225016",2737.9,"2026-04-29"],["INV-45742","ck-sa-400 Rt",2893.0,"2026-03-11"],
+["INV-45740","rex-ti-we-390",1523.5,"2026-03-05"],["INV-45736","je-ca-rt-0",74.8,"2026-03-04"],
+["INV-45734","Je-Kh-ca-10(PO 4505227418)",679.8,"2026-04-21"],["INV-45735","ck-sa-5544 Rt",19066.66,"2026-03-19"],
+["INV-45730","Ba-Ca-RT-2500",18059.8,"2026-03-11"],["INV-45732","rex-ti-em-55",495.0,"2026-03-10"],
+["INV-45728","je-ca-em-0",671.0,"2026-03-04"],["INV-45725","Ba-Ca-RT-0",88.0,"2026-03-19"],
+["INV-45726","je-sa-ph-80",522.5,"2026-03-04"],["INV-45731","ck-sa-900 Rt",4345.0,"2026-03-17"],
+["INV-45727","rex-sa-rt-0",726.0,"2026-03-03"],["INV-45724","je-sa-rt-1000",7551.5,"2026-04-01"],
+["INV-45720","ck-sa-0 Rt",495.0,"2026-04-13"],["INV-45719","ck-sa-1160 Rt",1276.0,"2026-04-20"],
+["INV-45721","Je-te-rt-20",154.0,"2026-02-26"],["INV-45722","rex-ti-rt-0",722.7,"2026-03-03"],
+["INV-45718","rex-ti-em-60",500.5,null],["INV-45717","Titi-0",484.0,"2026-02-25"],
+["INV-45716","Je-Sa-rt-115",198.0,"2026-02-24"],["INV-45714","titi-terry-0",211.2,"2026-02-23"],
+["INV-45715","rex-kh-rf-390",1388.2,null],["INV-45713","rex-ti-rt-0",192.5,"2026-02-24"],
+["INV-45712","ck-kh-520 Rt",5251.4,"2026-02-25"],["INV-45709","ck-sa-50 Rt",242.0,"2026-02-20"],
+["INV-45711","ck-sa-300 Re",1001.0,"2026-03-25"],["INV-45706","Ba-Ca-RT-0",13497.0,"2026-05-20"],
+["INV-45707","Ba-Ca-RT-2380",21509.4,"2026-05-01"],["INV-45704","rex-kh-rt-0",605.0,"2026-02-23"]
+];
+
+const SALES   = {ba:"Barry", ck:"Chike", je:"Jenny", ja:"Jack", rex:"Rex", ha:"Harry"};
+const QUOTERS = {kh:"Khin", sy:"Sysy", sa:"Sandy", ca:"Carine"};
+const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry"];
+const QUOTER_ORDER  = ["Khin","Sysy","Sandy","Carine"];
+const GST = 1.1;
+const FY_START = "2025-07-01", FY_END = "2026-06-30";   // 财年 2025-26
+const BACKEND_URL = "data.json";   // GitHub Pages 上由 Action 定时生成;留空则「更新」按钮回退为 CSV 导入
+function inFY(fpd){ return fpd && fpd>=FY_START && fpd<=FY_END; }
+
+let DATA = SNAPSHOT.map(r=>({inv:r[0], ref:r[1], total:r[2], fpd:r[3], customer:"", status:""}));
+let selectedPerson = "all";
+
+function isDeposit(ref){ return /deposit|订金|定金|押金|预付|\bdep\b/i.test(ref||""); }
+function isBalance(ref){ return /balance|尾款|余款|结清|\bbal\b/i.test(ref||""); }
+
+function parseRef(refRaw, inv){
+  const res = {sales:null, quoters:[], fee:0, status:"ok", note:""};
+  if(refRaw==null || String(refRaw).trim()===""){ res.status="review"; res.note="Reference 为空"; return res; }
+  let ref = String(refRaw).trim();
+  const low0 = ref.toLowerCase();
+  ref = ref.replace(/[\(（][^\)）]*[\)）]/g," ");
+  const toks = ref.split(/[-\s;,，]+/).map(t=>t.trim()).filter(Boolean);
+  const low  = toks.map(t=>t.toLowerCase());
+  if(low.length && SALES[low[0]]) res.sales = SALES[low[0]];
+  else { for(const t of low){ if(SALES[t]){ res.sales=SALES[t]; break; } } }
+  for(const t of low){ if(QUOTERS[t] && !res.quoters.includes(QUOTERS[t])) res.quoters.push(QUOTERS[t]); }
+  const invDigits = (inv||"").replace(/\D/g,"");
+  let fee=null;
+  for(const t of low){
+    if(t==="o"){ if(fee===null) fee=0; continue; }
+    if(/^\d+(\.\d+)?$/.test(t)){
+      if(t===invDigits) continue;
+      if(t.length>=6) continue;
+      const n=parseFloat(t);
+      if(n>=40000) continue;
+      if(fee===null) fee=n;
+    }
+  }
+  res.fee = fee===null?0:fee;
+  if(!res.sales && res.quoters.length===0){
+    if(/^p\d{5,}/i.test(low0) || low0.includes("amend")) { res.status="skip"; res.note="PO/Amend(非提成)"; }
+    else { res.status="review"; res.note="未识别销售/报价员"; }
+  }
+  return res;
+}
+
+function amountOf(total, fee){ return Math.round((total/GST - fee)*100)/100; }
+function money(n){ return n.toLocaleString("en-AU",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function monthOf(fpd){ return fpd ? fpd.slice(0,7) : "无日期"; }
+function isFullPaid(st){ const s=(st||"").toLowerCase(); return s.includes("full paid")||s.includes("付清"); }
+
+function buildMonths(){
+  const set = new Set(DATA.map(d=>monthOf(d.fpd)));
+  const months = [...set].filter(m=>m!=="无日期").sort().reverse();
+  const sel = document.getElementById("month"); sel.innerHTML = "";
+  const o0=document.createElement("option"); o0.value="all"; o0.textContent="全部"; sel.appendChild(o0);
+  const ofy=document.createElement("option"); ofy.value="fy2025-26"; ofy.textContent="★ 财年总览 2025-26 (7/1–6/30)"; sel.appendChild(ofy);
+  months.forEach(m=>{ const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
+  if(set.has("无日期")){ const o=document.createElement("option"); o.value="无日期"; o.textContent="无日期(未填)"; sel.appendChild(o); }
+  if(months.length) sel.value = months[0];
+}
+
+let LAST_RESULT = null;
+function compute(){
+  const mSel = document.getElementById("month").value;
+  const hasStatus = DATA.some(d=>d.status && d.status.trim()!=="");
+
+  const settle = {};
+  DATA.forEach(d=>{
+    if(!d.customer) return;
+    if(isDeposit(d.ref)||isBalance(d.ref)){
+      const k=d.customer.trim().toLowerCase();
+      (settle[k]=settle[k]||{members:[],allPaid:true}).members.push(d);
+    }
+  });
+  Object.values(settle).forEach(g=>{ g.allPaid = g.members.every(m=>isFullPaid(m.status)); });
+  function settlementHeld(d){
+    if(!d.customer) return false;
+    if(!(isDeposit(d.ref)||isBalance(d.ref))) return false;
+    const g=settle[d.customer.trim().toLowerCase()];
+    return g ? !g.allPaid : false;
+  }
+
+  const salesMap={}, quoterMap={}, noQuoter=[], review=[], skip=[], held=[];
+  let okCount=0;
+
+  DATA.forEach(d=>{
+    const paid = hasStatus ? isFullPaid(d.status) : true;
+    const p = parseRef(d.ref, d.inv);
+    const amt = amountOf(d.total, p.fee);
+    const rec = {inv:d.inv, ref:d.ref, total:d.total, fee:p.fee, amt, sales:p.sales,
+                 quoters:p.quoters, neg:amt<0, customer:d.customer, fpd:d.fpd,
+                 dep:isDeposit(d.ref), bal:isBalance(d.ref), status:d.status};
+    if(paid && settlementHeld(d)){ held.push(rec); return; }
+    if(!paid) return;
+    if(p.status==="skip"){ skip.push({...rec,note:p.note}); return; }
+    if(p.status==="review"){ review.push({...rec,note:p.note}); return; }
+    if(mSel==="fy2025-26"){ if(!inFY(d.fpd)) return; }
+    else if(mSel!=="all" && monthOf(d.fpd)!==mSel) return;
+    okCount++;
+    if(p.sales){
+      if(p.quoters.length===0){ noQuoter.push(rec); }
+      else { (salesMap[p.sales]=salesMap[p.sales]||[]).push(rec); }
+    }
+    p.quoters.forEach(q=>{ (quoterMap[q]=quoterMap[q]||[]).push(rec); });
+  });
+
+  LAST_RESULT = {mSel, hasStatus, salesMap, quoterMap, noQuoter, review, skip, held, okCount};
+  buildPersonBar();
+  render();
+}
+
+function buildPersonBar(){
+  const R=LAST_RESULT; const bar=document.getElementById("personbar"); bar.innerHTML="";
+  const lbl=document.createElement("span"); lbl.className="pbar-label"; lbl.textContent="只看："; bar.appendChild(lbl);
+  const allBtn=document.createElement("button"); allBtn.className="pbtn"+(selectedPerson==="all"?" active":"");
+  allBtn.textContent="全部"; allBtn.onclick=()=>{ selectedPerson="all"; render(); buildPersonBar(); }; bar.appendChild(allBtn);
+  SALES_ORDER.forEach(n=>{ if(!R.salesMap[n]) return;
+    const b=document.createElement("button");
+    const on = selectedPerson!=="all"&&selectedPerson.role==="sales"&&selectedPerson.name===n;
+    b.className="pbtn s"+(on?" active":""); b.innerHTML='<span class="role">销</span>'+n;
+    b.onclick=()=>{ selectedPerson={role:"sales",name:n}; render(); buildPersonBar(); }; bar.appendChild(b);
+  });
+  QUOTER_ORDER.forEach(n=>{ if(!R.quoterMap[n]) return;
+    const b=document.createElement("button");
+    const on = selectedPerson!=="all"&&selectedPerson.role==="quoter"&&selectedPerson.name===n;
+    b.className="pbtn q"+(on?" active":""); b.innerHTML='<span class="role">报</span>'+n;
+    b.onclick=()=>{ selectedPerson={role:"quoter",name:n}; render(); buildPersonBar(); }; bar.appendChild(b);
+  });
+}
+
+function tagFor(r){ return (r.dep?'<span class="tag dep">订金</span>':'')+(r.bal?'<span class="tag bal">尾款</span>':''); }
+function fmtDate(d){ return d ? d : '<span class="ref">—</span>'; }
+function tableFor(list){
+  if(!list.length) return '<div class="empty">无记录</div>';
+  let sum=0, body="";
+  list.forEach(r=>{ sum+=r.amt;
+    body+=`<tr><td>${r.inv}${tagFor(r)}</td><td class="ref">${escapeHtml(r.ref)}</td>`+
+      `<td class="num">${fmtDate(r.fpd)}</td>`+
+      `<td class="r num">${money(r.total)}</td><td class="r num fee">${money(r.fee)}</td>`+
+      `<td class="r num">${money(r.amt)}${r.neg?'<span class="flag">负</span>':''}</td></tr>`; });
+  return `<table><thead><tr><th>单号</th><th>Reference</th><th>付款日期</th><th class="r">Total</th><th class="r">安装费</th><th class="r">金额</th></tr></thead>`+
+    `<tbody>${body}<tr class="total-row"><td colspan="5">合计 (${list.length} 单)</td><td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
+}
+function groupBlock(name, list, cls, roleTag){
+  const sum=list.reduce((a,r)=>a+r.amt,0);
+  return `<div class="group-title ${cls}"><h2>${name}</h2><span class="cnt">${list.length} 单 · 合计 $${money(sum)}</span><span class="src">${roleTag}</span></div>`+tableFor(list);
+}
+
+function render(){
+  const R=LAST_RESULT; if(!R) return;
+  const out=document.getElementById("out"); out.innerHTML="";
+  const allSalesSum=Object.values(R.salesMap).flat().reduce((a,r)=>a+r.amt,0);
+  const allQuoterSum=Object.values(R.quoterMap).flat().reduce((a,r)=>a+r.amt,0);
+  document.getElementById("stats").innerHTML=
+    `<div class="stat"><div class="k">已计入</div><div class="v g">${R.okCount}</div></div>`+
+    `<div class="stat"><div class="k">销售金额合计</div><div class="v y">$${money(allSalesSum)}</div></div>`+
+    `<div class="stat"><div class="k">报价金额合计</div><div class="v y">$${money(allQuoterSum)}</div></div>`+
+    `<div class="stat"><div class="k">待结清(订金/尾款)</div><div class="v" style="color:var(--acc)">${R.held.length}</div></div>`+
+    `<div class="stat"><div class="k">待核对</div><div class="v" style="color:var(--red)">${R.review.length}</div></div>`;
+
+  let html="";
+  if(selectedPerson!=="all"){
+    const role=selectedPerson.role, name=selectedPerson.name;
+    if(role==="sales"){
+      html+=`<div class="role-band">— 销售员 · ${name} —</div>`;
+      html+=groupBlock(name, R.salesMap[name]||[], "s", "销售");
+      const own=(R.noQuoter||[]).filter(r=>r.sales===name);
+      html+=`<div class="role-band">— ${name} 的「只有销售、无报价员」单 —</div>`;
+      html+=`<div class="group-title special"><h2>${name} · 无报价员</h2><span class="cnt">${own.length} 单</span></div>`+tableFor(own);
+    }else{
+      html+=`<div class="role-band">— 报价员 · ${name} —</div>`;
+      html+=groupBlock(name, R.quoterMap[name]||[], "q", "报价");
+    }
+    out.innerHTML=html; return;
+  }
+
+  // 财年总览汇总表(仅 FY + 全部视图)
+  if(R.mSel==="fy2025-26"){
+    const rows=[];
+    SALES_ORDER.forEach(n=>{ if(R.salesMap[n]){ const l=R.salesMap[n]; rows.push(["销售",n,l.length,l.reduce((a,r)=>a+r.amt,0)]); }});
+    QUOTER_ORDER.forEach(n=>{ if(R.quoterMap[n]){ const l=R.quoterMap[n]; rows.push(["报价",n,l.length,l.reduce((a,r)=>a+r.amt,0)]); }});
+    const nq=R.noQuoter||[];
+    if(nq.length) rows.push(["仅销售(无报价)","—",nq.length,nq.reduce((a,r)=>a+r.amt,0)]);
+    const body=rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td class="r num">${r[2]}</td><td class="r num amt">$${money(r[3])}</td></tr>`).join("");
+    html+=`<div class="role-band">— 财年总览 2025-26 (2025/7/1 – 2026/6/30) —</div>`;
+    html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">金额合计</th></tr></thead><tbody>${body}</tbody></table>`;
+    html+=`<div class="note" style="margin:10px 0 20px">下方为各人员财年明细。内置快照仅含 2026 年 2–5 月;完整财年请「导入」monday 全量 CSV。</div>`;
+  }
+
+  html+=`<div class="role-band">— 销售员 —</div>`;
+  SALES_ORDER.forEach(n=>{ if(R.salesMap[n]) html+=groupBlock(n,R.salesMap[n],"s","销售"); });
+  html+=`<div class="role-band">— 报价员(可多个) —</div>`;
+  QUOTER_ORDER.forEach(n=>{ if(R.quoterMap[n]) html+=groupBlock(n,R.quoterMap[n],"q","报价"); });
+  html+=`<div class="role-band">— 特殊:只有销售员、没有报价员 —</div>`;
+  html+=`<div class="group-title special"><h2>只写销售 · 无报价员</h2><span class="cnt">${R.noQuoter.length} 单</span></div>`+tableFor(R.noQuoter);
+  if(R.held.length){
+    html+=`<div class="role-band">— 待结清(订金已付,尾款未付清 → 暂不发提成)—</div>`;
+    html+=`<div class="held">`+tableForReview(R.held)+`</div>`;
+  }
+  html+=`<details><summary>需人工核对 (${R.review.length}) ＋ 已跳过 PO/Amend (${R.skip.length})</summary>`;
+  html+=`<div class="group-title review"><h2>需人工核对</h2><span class="cnt">未识别销售/报价员</span></div>`+tableForReview(R.review);
+  html+=`<div class="group-title review"><h2>已跳过(非提成)</h2><span class="cnt">PO / Amend</span></div>`+tableForReview(R.skip);
+  html+=`</details>`;
+  out.innerHTML=html;
+}
+
+function tableForReview(list){
+  if(!list.length) return '<div class="empty">无</div>';
+  let body="";
+  list.forEach(r=>{ body+=`<tr><td>${r.inv}${tagFor(r)}</td><td class="ref">${escapeHtml(r.ref)}</td><td class="num">${fmtDate(r.fpd)}</td><td class="r num">${money(r.total)}</td><td class="ref">${r.note||r.customer||""}</td></tr>`; });
+  return `<table><thead><tr><th>单号</th><th>Reference</th><th>付款日期</th><th class="r">Total</th><th>说明/客户</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+function parseCSV(text){
+  const rows=[]; let i=0, field="", row=[], inQ=false;
+  while(i<text.length){ const c=text[i];
+    if(inQ){ if(c==='"'){ if(text[i+1]==='"'){field+='"';i+=2;continue;} inQ=false;i++;continue;} field+=c;i++;continue; }
+    if(c==='"'){inQ=true;i++;continue;}
+    if(c===','){row.push(field);field="";i++;continue;}
+    if(c==='\r'){i++;continue;}
+    if(c==='\n'){row.push(field);rows.push(row);row=[];field="";i++;continue;}
+    field+=c;i++; }
+  if(field.length||row.length){row.push(field);rows.push(row);}
+  return rows.filter(r=>r.some(x=>x&&x.trim()!==""));
+}
+function findCol(h,keys){ const l=h.map(x=>x.toLowerCase().trim()); for(const k of keys){ const i=l.findIndex(x=>x.includes(k)); if(i>=0) return i; } return -1; }
+function stripCustomer(name, invVal){ let s=String(name||"").trim();
+  s=s.replace(/^INV-?\s*\d+\s*[-–:]?\s*/i,"");
+  if(invVal) s=s.replace(invVal,"").replace(/^\s*[-–:]\s*/,"");
+  return s.trim();
+}
+document.getElementById("csv").addEventListener("change", e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{
+    const rows=parseCSV(rd.result); if(rows.length<2){ alert("CSV 没有数据行"); return; }
+    const head=rows[0];
+    const iInv=findCol(head,["invoice","单号"]);
+    const iName=findCol(head,["name","名称","项目","item"]);
+    const iRef=findCol(head,["reference","参考","备注"]);
+    const iTot=findCol(head,["total (aud)","total","总额","金额"]);
+    const iFpd=findCol(head,["full paid","付清","fullpaid"]);
+    const iSt =findCol(head,["payment status","付款状态","状态","status"]);
+    if(iRef<0||iTot<0){ alert("未找到 Reference 或 Total 列。表头:\n"+head.join(" | ")); return; }
+    const data=[];
+    for(let r=1;r<rows.length;r++){ const row=rows[r];
+      const invV = iInv>=0?(row[iInv]||"").trim():"";
+      const nameV= iName>=0?(row[iName]||"").trim():"";
+      const tot=parseFloat(String(row[iTot]||"").replace(/[^0-9.\-]/g,""))||0;
+      data.push({ inv: invV || (nameV.match(/INV-?\d+/i)?(nameV.match(/INV-?\d+/i)[0]):("行"+r)),
+                  ref: iRef>=0?row[iRef]:"", total:tot,
+                  fpd: iFpd>=0?normDate(row[iFpd]):null,
+                  status: iSt>=0?(row[iSt]||""):"",
+                  customer: stripCustomer(nameV, invV) }); }
+    if(!data.length){ alert("没有可用数据行"); return; }
+    DATA=data;
+    const withStatus=data.filter(d=>d.status).length;
+    document.getElementById("datasrc").textContent="已导入 CSV("+data.length+" 行"+(withStatus?"，含状态 → 启用结清判断":"，无状态列 → 全部按已付清处理")+")";
+    selectedPerson="all"; buildMonths(); compute();
+    alert("导入成功："+data.length+" 行。已重新计算。");
+  }catch(err){ alert("解析 CSV 失败："+err.message); } };
+  rd.readAsText(f);
+});
+function normDate(s){ s=(s||"").trim(); if(!s) return null;
+  let m=s.match(/(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/); if(m) return `${m[1]}-${String(m[2]).padStart(2,"0")}-${String(m[3]).padStart(2,"0")}`;
+  m=s.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/); if(m) return `${m[3]}-${String(m[2]).padStart(2,"0")}-${String(m[1]).padStart(2,"0")}`;
+  return null;
+}
+
+document.getElementById("export").addEventListener("click", ()=>{
+  if(!LAST_RESULT){ alert("请先点「计算」"); return; }
+  const R=LAST_RESULT; const lines=[["角色","人员","单号","Reference","付款日期","Total","安装费","金额","订金/尾款"]];
+  const tag=r=>(r.dep?"订金":"")+(r.bal?"尾款":"");
+  const push=(role,name,list)=>list.forEach(r=>lines.push([role,name,r.inv,r.ref,r.fpd||"",r.total,r.fee,r.amt,tag(r)]));
+  SALES_ORDER.forEach(n=>{ if(R.salesMap[n]) push("销售",n,R.salesMap[n]); });
+  QUOTER_ORDER.forEach(n=>{ if(R.quoterMap[n]) push("报价",n,R.quoterMap[n]); });
+  (R.noQuoter||[]).forEach(r=>lines.push(["仅销售(无报价)",r.sales||"",r.inv,r.ref,r.fpd||"",r.total,r.fee,r.amt,tag(r)]));
+  const csv=lines.map(r=>r.map(x=>{ const s=String(x); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(",")).join("\n");
+  const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`commission_${R.mSel}.csv`; a.click();
+});
+
+document.getElementById("legend").innerHTML=
+  "<b>计算规则</b>:金额 = Total ÷ 1.1 (去 GST) − 安装费。<b>销售</b>=第一段(一人);<b>报价</b>=后面所有报价代码(可多人,各自名下都计入)。<br>"+
+  "<b>人员按钮</b>:点上方按钮只看某个销售/报价员的表(销售视图含其「无报价员」单)。点「全部」恢复。<br>"+
+  "<b>订金/尾款</b>:Reference 含 deposit/balance 关键词的单,按同客户配对;只有该组全部 Full Paid 才计提成,否则进「待结清」。<b>需导入含 Payment Status 与客户名(Name 列)的完整 CSV 才生效</b>。<br>"+
+  "<b>财年总览</b>:月份下拉选「★ 财年总览 2025-26」即按 2025/7/1–2026/6/30 汇总,顶部显示各人员合计表。<br>"+
+  "<b>更新数据</b>:monday 导出 board 为 CSV(含 Name、Reference、Total (AUD)、Payment Status、Full Paid 日期)→「导入」。「从 monday 更新」按钮需先部署后台并填 BACKEND_URL;否则会回退到 CSV 导入。<b>纯网页无法安全直连 monday。</b><br>"+
+  "<b>密码</b>:在代码 ACCESS_PASSWORD 处修改。注意这是基础门,真正的外部加密访问需服务器端密码保护(如 Netlify/Vercel 的 password protection)。";
+
+/* init:优先读取 data.json(GitHub Pages 由 Action 生成),否则用内置快照 */
+document.getElementById("go").addEventListener("click", ()=>{ compute(); });
+(async function init(){
+  try{
+    const r=await fetch("data.json",{cache:"no-store"});
+    if(r.ok){
+      const j=await r.json();
+      if(Array.isArray(j)&&j.length){
+        DATA=j.map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
+          fpd:d.fpd||null, status:d.status||"", customer:d.customer||""}));
+        document.getElementById("datasrc").textContent="数据来源:data.json("+DATA.length+" 行)";
+      }
+    }
+  }catch(e){ /* 本地打开或无 data.json → 使用内置快照 */ }
+  buildMonths(); compute();
+})();
+
+/* ---------- 密码门(基础,非真安全) ---------- */
+const ACCESS_PASSWORD = "acesign2026";   // ← 改成你要的密码
+function unlock(){
+  const pw=document.getElementById("gatePw").value;
+  if(pw===ACCESS_PASSWORD){ document.getElementById("gate").style.display="none"; }
+  else { document.getElementById("gateErr").textContent="密码错误,请重试。"; }
+}
+document.getElementById("gateBtn").addEventListener("click", unlock);
+document.getElementById("gatePw").addEventListener("keydown", e=>{ if(e.key==="Enter") unlock(); });
+
+/* ---------- 从 monday 更新(需后台) ---------- */
+document.getElementById("syncBtn").addEventListener("click", async ()=>{
+  if(!BACKEND_URL){
+    alert("尚未配置后台地址(代码顶部 BACKEND_URL 为空)。\n\n纯网页无法安全直连 monday(会暴露密钥)。\n现在改用「导入 CSV」加载 monday 导出的最新数据。\n\n若要一键自动同步,请部署后台服务并填入 BACKEND_URL。");
+    document.getElementById("csv").click();
+    return;
+  }
+  const btn=document.getElementById("syncBtn"); const old=btn.textContent; btn.textContent="⟳ 更新中…"; btn.disabled=true;
+  try{
+    const res=await fetch(BACKEND_URL,{headers:{"Accept":"application/json"}});
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const json=await res.json();   // 期望格式: [{inv,ref,total,fpd,status,customer}, ...]
+    if(!Array.isArray(json)||!json.length) throw new Error("返回数据为空或格式不对");
+    DATA=json.map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
+      fpd:d.fpd||null, status:d.status||"", customer:d.customer||""}));
+    document.getElementById("datasrc").textContent="已从 monday 更新("+DATA.length+" 行 · "+new Date().toLocaleString()+")";
+    selectedPerson="all"; buildMonths(); compute();
+    alert("更新成功:"+DATA.length+" 行。");
+  }catch(err){ alert("从 monday 更新失败:"+err.message+"\n\n可改用「导入 CSV」。"); }
+  finally{ btn.textContent=old; btn.disabled=false; }
+});
+</script>
+</body>
+</html>
