@@ -351,18 +351,22 @@ function tagFor(r){ return (r.dep?'<span class="tag dep">订金</span>':'')+(r.b
 function fmtDate(d){ return d ? d : '<span class="ref">—</span>'; }
 function tableFor(list){
   if(!list.length) return '<div class="empty">无记录</div>';
-  let sum=0, body="";
-  list.forEach(r=>{ sum+=r.amt;
+  let sum=0, totalSum=0, feeSum=0, body="";
+  list.forEach(r=>{ sum+=r.amt; totalSum+=r.total; feeSum+=r.fee;
     body+=`<tr><td>${r.inv}${tagFor(r)}</td><td class="ref">${escapeHtml(r.ref)}</td>`+
       `<td class="num">${fmtDate(r.fpd)}</td>`+
       `<td class="r num">${money(r.total)}</td><td class="r num fee">${money(r.fee)}</td>`+
       `<td class="r num">${money(r.amt)}${r.neg?'<span class="flag">负</span>':''}</td></tr>`; });
-  return `<table><thead><tr><th>单号</th><th>Reference</th><th>付款日期</th><th class="r">Total</th><th class="r">安装费</th><th class="r">金额</th></tr></thead>`+
-    `<tbody>${body}<tr class="total-row"><td colspan="5">合计 (${list.length} 单)</td><td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
+  return `<table><thead><tr><th>单号</th><th>Reference</th><th>付款日期</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead>`+
+    `<tbody>${body}<tr class="total-row"><td colspan="3">合计 (${list.length} 单)</td>`+
+    `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
+    `<td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
 }
 function groupBlock(name, list, cls, roleTag){
   const sum=list.reduce((a,r)=>a+r.amt,0);
-  return `<div class="group-title ${cls}"><h2>${name}</h2><span class="cnt">${list.length} 单 · 合计 $${money(sum)}</span><span class="src">${roleTag}</span></div>`+tableFor(list);
+  const tot=list.reduce((a,r)=>a+r.total,0);
+  const fee=list.reduce((a,r)=>a+r.fee,0);
+  return `<div class="group-title ${cls}"><h2>${name}</h2><span class="cnt">${list.length} 单 · 金额 $${money(sum)} · 安装费 $${money(fee)} · 总收款 $${money(tot)}</span><span class="src">${roleTag}</span></div>`+tableFor(list);
 }
 
 function render(){
@@ -370,12 +374,17 @@ function render(){
   const out=document.getElementById("out"); out.innerHTML="";
   const allSalesSum=Object.values(R.salesMap).flat().reduce((a,r)=>a+r.amt,0);
   const allQuoterSum=Object.values(R.quoterMap).flat().reduce((a,r)=>a+r.amt,0);
+  // 总收款/安装费按"发票"去重统计(一张单可能同时在多个报价员名下,避免重复加总)
+  const seen={}; let totalRecv=0, feeRecv=0;
+  [...Object.values(R.salesMap).flat(), ...Object.values(R.quoterMap).flat(), ...(R.noQuoter||[])].forEach(r=>{
+    if(seen[r.inv]) return; seen[r.inv]=1; totalRecv+=r.total; feeRecv+=r.fee; });
   document.getElementById("stats").innerHTML=
-    `<div class="stat"><div class="k">已计入</div><div class="v g">${R.okCount}</div></div>`+
+    `<div class="stat"><div class="k">已计入(单数)</div><div class="v g">${Object.keys(seen).length}</div></div>`+
+    `<div class="stat"><div class="k">总收款(含GST+安装)</div><div class="v y">$${money(totalRecv)}</div></div>`+
+    `<div class="stat"><div class="k">安装费合计</div><div class="v y">$${money(feeRecv)}</div></div>`+
     `<div class="stat"><div class="k">销售金额合计</div><div class="v y">$${money(allSalesSum)}</div></div>`+
     `<div class="stat"><div class="k">报价金额合计</div><div class="v y">$${money(allQuoterSum)}</div></div>`+
-    `<div class="stat"><div class="k">待结清(订金/尾款)</div><div class="v" style="color:var(--acc)">${R.held.length}</div></div>`+
-    `<div class="stat"><div class="k">待核对</div><div class="v" style="color:var(--red)">${R.review.length}</div></div>`;
+    `<div class="stat"><div class="k">待结清</div><div class="v" style="color:var(--acc)">${R.held.length}</div></div>`;
 
   let html="";
   if(selectedPerson!=="all"){
@@ -396,13 +405,14 @@ function render(){
   // 财年总览汇总表(仅 FY + 全部视图)
   if(R.mSel==="fy2025-26"){
     const rows=[];
-    SALES_ORDER.forEach(n=>{ if(R.salesMap[n]){ const l=R.salesMap[n]; rows.push(["销售",n,l.length,l.reduce((a,r)=>a+r.amt,0)]); }});
-    QUOTER_ORDER.forEach(n=>{ if(R.quoterMap[n]){ const l=R.quoterMap[n]; rows.push(["报价",n,l.length,l.reduce((a,r)=>a+r.amt,0)]); }});
+    const agg=l=>[l.length, l.reduce((a,r)=>a+r.amt,0), l.reduce((a,r)=>a+r.fee,0), l.reduce((a,r)=>a+r.total,0)];
+    SALES_ORDER.forEach(n=>{ if(R.salesMap[n]){ const a=agg(R.salesMap[n]); rows.push(["销售",n,...a]); }});
+    QUOTER_ORDER.forEach(n=>{ if(R.quoterMap[n]){ const a=agg(R.quoterMap[n]); rows.push(["报价",n,...a]); }});
     const nq=R.noQuoter||[];
-    if(nq.length) rows.push(["仅销售(无报价)","—",nq.length,nq.reduce((a,r)=>a+r.amt,0)]);
-    const body=rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td class="r num">${r[2]}</td><td class="r num amt">$${money(r[3])}</td></tr>`).join("");
+    if(nq.length){ const a=agg(nq); rows.push(["仅销售(无报价)","—",...a]); }
+    const body=rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td class="r num">${r[2]}</td><td class="r num amt">$${money(r[3])}</td><td class="r num">$${money(r[4])}</td><td class="r num">$${money(r[5])}</td></tr>`).join("");
     html+=`<div class="role-band">— 财年总览 2025-26 (2025/7/1 – 2026/6/30) —</div>`;
-    html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">金额合计</th></tr></thead><tbody>${body}</tbody></table>`;
+    html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">金额(提成基数)</th><th class="r">安装费合计</th><th class="r">总收款(含GST)</th></tr></thead><tbody>${body}</tbody></table>`;
     html+=`<div class="note" style="margin:10px 0 20px">下方为各人员财年明细。内置快照仅含 2026 年 2–5 月;完整财年请「导入」monday 全量 CSV。</div>`;
   }
 
