@@ -480,6 +480,36 @@ function computePayout(orders){
 }
 function tierLabel(t){ return t==="noQuoter"?"无报价":(t==="selfQuote"?"自报价":"有报价"); }
 
+/* 单个人页面的提成卡片(构成 + 逐单 + ÷养老金实发) */
+function personCommissionBlock(name){
+  const PO=LAST_RESULT && LAST_RESULT.payout; if(!PO) return "";
+  const r=PO.rows.find(x=>x.name===name);
+  if(!r || Math.abs(r.gross)<0.005)
+    return `<div class="role-band">— ${name} · 提成 —</div><div class="note">${name} 在本期间没有提成(或比例待补 / 不发提成)。</div>`;
+  let h=`<div class="role-band">— ${name} · 提成(本期间)—</div>`;
+  h+=`<div class="group-title special"><h2>${name} · 提成合计 $${money(r.gross)}</h2>`+
+     `<span class="cnt">实发(÷${SUPER_DIVISOR} 养老金) <b style="color:var(--acc2)">$${money(r.net)}</b></span></div>`;
+  const parts=[];
+  if(Math.abs(r.company)>0.004) parts.push(["公司抽成 1%(全公司金额合计)", r.company]);
+  if(Math.abs(r.team)>0.004)    parts.push(["团队抽成 1.5%(Jenny+Rex+Barry有报价单)", r.team]);
+  if(Math.abs(r.order)>0.004)   parts.push(["按单提成(下方逐单)", r.order]);
+  if(Math.abs(r.titi)>0.004)    parts.push(["TITI 单独开单 3%", r.titi]);
+  h+=`<table><thead><tr><th>提成构成</th><th class="r">金额</th></tr></thead><tbody>`+
+     parts.map(p=>`<tr><td>${p[0]}</td><td class="r num">$${money(p[1])}</td></tr>`).join("")+
+     `<tr class="total-row"><td>提成合计</td><td class="r num amt">$${money(r.gross)}</td></tr>`+
+     `<tr class="total-row"><td>实发(提成 ÷ ${SUPER_DIVISOR} 养老金)</td><td class="r num" style="color:var(--acc2);font-weight:700">$${money(r.net)}</td></tr>`+
+     `</tbody></table>`;
+  if(r.detail.length){
+    let b="";
+    r.detail.forEach(d=>{ b+=`<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
+      `<td class="r num">${money(d.amt)}</td><td class="ref">${d.rate}</td>`+
+      `<td class="r num amt">$${money(d.comm)}</td></tr>`; });
+    h+=`<details open><summary>${name} 按单提成明细(${r.detail.length} 笔)</summary>`+
+       `<table><thead><tr><th>单号</th><th>Reference</th><th class="r">金额(基数)</th><th>比例</th><th class="r">提成</th></tr></thead><tbody>${b}</tbody></table></details>`;
+  }
+  return h;
+}
+
 function buildPersonBar(){
   const R=LAST_RESULT; const bar=document.getElementById("personbar"); bar.innerHTML="";
   if(viewMode==="payout"){ return; }   // 发放视图不显示人员筛选条
@@ -581,8 +611,9 @@ function render(){
   let html="";
   if(selectedPerson!=="all"){
     const role=selectedPerson.role, name=selectedPerson.name;
+    html+=personCommissionBlock(name);   // ★ 个人页:先显示该人提成
     if(role==="sales"){
-      html+=`<div class="role-band">— 销售员 · ${name} —</div>`;
+      html+=`<div class="role-band">— 销售员 · ${name}(金额基数明细)—</div>`;
       html+=groupBlock(name, R.salesMap[name]||[], "s", "销售");
       const own=(R.noQuoter||[]).filter(r=>r.sales===name);
       html+=`<div class="role-band">— ${name} 的「只有销售、无报价员」单 —</div>`;
