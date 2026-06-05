@@ -82,10 +82,7 @@
     align-self:center;margin-right:4px}
   .tag{font-size:10px;border-radius:5px;padding:1px 6px;margin-left:6px;font-weight:700}
   .tag.dep{background:#3a2a00;color:var(--acc)} .tag.bal{background:#0a2e1a;color:var(--acc2)}
-  .tag.sq{background:#0a1f3a;color:var(--blue)} .tag.nq{background:#3a1a1a;color:var(--red)}
-  .tag.tt{background:#2a0a3a;color:#c98bff}
   .held .group-title{border-color:var(--acc)}
-  .payout .v.pay{color:var(--acc2)}
   #gate{position:fixed;inset:0;background:#0b0e13;z-index:100;display:flex;align-items:center;justify-content:center}
   .gate-box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:36px 34px;width:340px;text-align:center}
   .gate-title{font-size:20px;font-weight:700}
@@ -125,15 +122,10 @@
     <button class="btn-ghost" id="syncBtn">⟳ 从 monday 更新</button>
     <div class="ctl">
       <label>视图</label>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <div style="display:flex;gap:6px">
         <button class="pbtn active" id="modeCommission">提成表(Full Paid)</button>
         <button class="pbtn" id="modeBilled">已开单统计(排除Credit)</button>
-        <button class="pbtn" id="modePayout">★ 提成发放(÷养老金)</button>
       </div>
-    </div>
-    <div class="ctl">
-      <label>导入最新数据(monday 导出的 CSV)</label>
-      <input type="file" id="csv" accept=".csv,text/csv">
     </div>
     <button class="btn-ghost" id="export">导出结果 CSV</button>
   </div>
@@ -229,49 +221,22 @@ const SNAPSHOT = [
 
 const SALES   = {ba:"Barry", ck:"Chike", je:"Jenny", ja:"Jack", rex:"Rex", ha:"Harry", f:"Fiona"};
 const QUOTERS = {kh:"Khin", sy:"Sysy", sa:"Sandy", ca:"Carine", es:"Estella"};
-const SELFQUOTE = {b:"Barry", j:"Jenny"};      // 销售自己报价代号(ba-b / je-j)
-const TITI_CODES = ["ti","titi","titty","t"];   // TITI 代号(单独开单才计提成)
-const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry","Fiona","TITI"];
+const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry","Fiona"];
 const QUOTER_ORDER  = ["Khin","Sysy","Sandy","Carine","Estella"];
 const GST = 1.1;
 const FY_START = "2025-07-01", FY_END = "2026-06-30";   // 财年 2025-26
 const BACKEND_URL = "data.json";   // GitHub Pages 上由 Action 定时生成;留空则「更新」按钮回退为 CSV 导入
 function inFY(fpd){ return fpd && fpd>=FY_START && fpd<=FY_END; }
 
-/* ===================================================================
-   提成比例配置(★ 改这里即可,不用动下面的逻辑)
-   基数 = 「金额」= Total ÷ 1.1 − 安装费。养老金:每人提成合计后 ÷ SUPER_DIVISOR。
-   假设(请用真实数字核对):
-   · 「销售总额」= 全公司所有计入单的金额合计(基数同上)。
-   · Chike / Sysy 只拿公司级抽成,不再按单算。
-   · Barry 团队抽成基数 = Jenny全部 + Rex全部 + Barry「有报价员」的单,
-     不含 Barry 自己「无报价(4.5%)」「自报价(3%)」的单。
-   · Jenny 有独立报价员的单按 1.5%(无报价 4.5% / 自报价 3%)。
-   · Rex / Harry / Fiona / Carine / Estella 比例待补,暂按 0。
-=================================================================== */
-const SUPER_DIVISOR = 1.12;   // 养老金:每人提成算出后 ÷ 1.12 = 当月实发
-const RATES = {
-  companyOverride: { Chike: 0.01, Sysy: 0.01 },                 // × 全公司金额合计
-  teamOverride:    { Barry: 0.015 },                            // × (Jenny+Rex+Barry有报价员单) 金额合计
-  teamMembers:     ["Jenny","Rex"],                             // 团队抽成里"全部计入"的销售(Barry 自己按下面规则取舍)
-  salesTiered: {                                                // 销售按单分级(看有无报价员 / 自报价)
-    Barry: { noQuoter: 0.045, selfQuote: 0.03 },                // withQuoter → 计入团队抽成,不单列
-    Jenny: { noQuoter: 0.045, selfQuote: 0.03, withQuoter: 0.015 },
-  },
-  salesFlat: { Jack: 0.015 },                                  // 销售统一比例(Rex/Harry/Fiona 不发提成;Rex 仍计入 Barry 团队基数)
-  quoter:    { Sandy: 0.0325, Khin: 0.01, Carine: 0.015 },      // 报价员按名下金额(Estella 不发提成)
-  titi:      0.03,   // TITI 仅"单独开单"才计
-};
-
 let DATA = SNAPSHOT.map(r=>({inv:r[0], ref:r[1], total:r[2], fpd:r[3], customer:"", status:""}));
 let selectedPerson = "all";
-let viewMode = "commission";   // "commission" | "billed" | "payout"
+let viewMode = "commission";   // "commission" | "billed"
 
 function isDeposit(ref){ return /deposit|订金|定金|押金|预付|\bdep\b/i.test(ref||""); }
 function isBalance(ref){ return /balance|尾款|余款|结清|\bbal\b/i.test(ref||""); }
 
 function parseRef(refRaw, inv){
-  const res = {sales:null, quoters:[], fee:0, selfQuote:false, titiSolo:false, status:"ok", note:""};
+  const res = {sales:null, quoters:[], fee:0, status:"ok", note:""};
   if(refRaw==null || String(refRaw).trim()===""){ res.status="review"; res.note="Reference 为空"; return res; }
   let ref = String(refRaw).trim();
   const low0 = ref.toLowerCase();
@@ -283,8 +248,6 @@ function parseRef(refRaw, inv){
   if(low.length && SALES[low[0]]) res.sales = SALES[low[0]];
   else { for(const t of low){ if(SALES[t]){ res.sales=SALES[t]; break; } } }
   for(const t of low){ if(QUOTERS[t] && !res.quoters.includes(QUOTERS[t])) res.quoters.push(QUOTERS[t]); }
-  // 自报价:某 token 是当前销售员的自报价代号(b=Barry, j=Jenny)
-  for(const t of low){ if(SELFQUOTE[t] && SELFQUOTE[t]===res.sales){ res.selfQuote=true; break; } }
   const invDigits = (inv||"").replace(/\D/g,"");
   let fee=null;
   for(const t of low){
@@ -298,11 +261,6 @@ function parseRef(refRaw, inv){
     }
   }
   res.fee = fee===null?0:fee;
-  // TITI 单独开单:整单没有销售/报价员,但出现 TITI 代号 → 归 TITI(且仅 TITI 计提成)
-  const hasTiti = low.some(t=>TITI_CODES.includes(t));
-  if(!res.sales && res.quoters.length===0 && hasTiti){
-    res.sales="TITI"; res.titiSolo=true; res.status="ok"; return res;
-  }
   if(!res.sales && res.quoters.length===0){
     if(/^p\d{5,}/i.test(low0) || low0.includes("amend")) { res.status="skip"; res.note="PO/Amend(非提成)"; }
     else { res.status="review"; res.note="未识别销售/报价员"; }
@@ -353,15 +311,14 @@ function compute(){
 
   const salesMap={}, quoterMap={}, noQuoter=[], review=[], skip=[], held=[];
   let okCount=0;
-  const payoutOrders=[];   // ★ 提成发放用:计入单的明细(含 parse 结果)
 
   DATA.forEach(d=>{
     const paid = hasStatus ? isFullPaid(d.status) : true;
     const p = parseRef(d.ref, d.inv);
     const amt = amountOf(d.total, p.fee);
     const rec = {inv:d.inv, ref:d.ref, total:d.total, fee:p.fee, amt, sales:p.sales,
-                 quoters:p.quoters, selfQuote:p.selfQuote, titiSolo:p.titiSolo, neg:amt<0,
-                 customer:d.customer, fpd:d.fpd, dep:isDeposit(d.ref), bal:isBalance(d.ref), status:d.status};
+                 quoters:p.quoters, neg:amt<0, customer:d.customer, fpd:d.fpd,
+                 dep:isDeposit(d.ref), bal:isBalance(d.ref), status:d.status};
     if(paid && settlementHeld(d)){ held.push(rec); return; }
     if(!paid) return;
     if(p.status==="skip"){ skip.push({...rec,note:p.note}); return; }
@@ -369,18 +326,17 @@ function compute(){
     if(mSel==="fy2025-26"){ if(!inFY(d.fpd)) return; }
     else if(mSel!=="all" && monthOf(d.fpd)!==mSel) return;
     okCount++;
-    payoutOrders.push(rec);
-    if(p.titiSolo){ return; }    // TITI 单独开单不进销售/报价分组(老视图),只在发放视图算
-    if(p.sales && p.sales!=="TITI"){
+    if(p.sales){
       if(p.quoters.length===0){ noQuoter.push(rec); }
       else { (salesMap[p.sales]=salesMap[p.sales]||[]).push(rec); }
     }
     p.quoters.forEach(q=>{ (quoterMap[q]=quoterMap[q]||[]).push(rec); });
   });
 
-  LAST_RESULT = {mSel, hasStatus, salesMap, quoterMap, noQuoter, review, skip, held, okCount, payoutOrders};
+  LAST_RESULT = {mSel, hasStatus, salesMap, quoterMap, noQuoter, review, skip, held, okCount};
 
   // ===== 已开单统计(排除 Credit;数据加载时 Credit 已剔除)=====
+  // 不受 Full Paid 过滤影响;按开单日期 Issue Date 做期间筛选(无 issue 日期则只计入"全部")
   const bSales={}, bQuoter={}, bNoQuoter=[], bAll=[]; let bAllInv=0,bAllTot=0,bAllFee=0,bAllAmt=0;
   DATA.forEach(d=>{
     if(mSel==="fy2025-26"){ if(!(d.issue && d.issue>=FY_START && d.issue<=FY_END)) return; }
@@ -391,7 +347,7 @@ function compute(){
     const rec={inv:d.inv,ref:d.ref,total:d.total,fee:p.fee,amt,sales:p.sales,quoters:p.quoters,
                neg:amt<0,fpd:d.fpd,issue:d.issue,dep:isDeposit(d.ref),bal:isBalance(d.ref),status:d.status};
     bAllInv++; bAllTot+=d.total; bAllFee+=p.fee; bAllAmt+=amt; bAll.push(rec);
-    if(p.sales && p.sales!=="TITI"){
+    if(p.sales){
       if(p.quoters.length===0) bNoQuoter.push(rec);
       else (bSales[p.sales]=bSales[p.sales]||[]).push(rec);
     }
@@ -400,7 +356,7 @@ function compute(){
   bAll.sort((a,b)=>String(b.issue||"").localeCompare(String(a.issue||"")));
   LAST_RESULT.billed = {bSales, bQuoter, bNoQuoter, bAll, bAllInv, bAllTot, bAllFee, bAllAmt};
 
-  // ===== 定金/尾款已支付清单 =====
+  // ===== 定金/尾款已支付清单(Reference 含 deposit 或 balance + 状态 Full Paid)=====
   const depPaid=[];
   DATA.forEach(d=>{
     if(!((isDeposit(d.ref)||isBalance(d.ref)) && isFullPaid(d.status))) return;
@@ -415,102 +371,12 @@ function compute(){
   depPaid.sort((a,b)=>String(b.fpd||"").localeCompare(String(a.fpd||"")));
   LAST_RESULT.depPaid = depPaid;
 
-  // ===== ★ 提成发放计算 =====
-  LAST_RESULT.payout = computePayout(payoutOrders);
-
   buildPersonBar();
   render();
 }
 
-/* ===================================================================
-   提成发放计算:输入「计入单」明细,输出每人提成与实发(÷养老金)
-=================================================================== */
-function tierOf(o){ return o.selfQuote ? "selfQuote" : (o.quoters.length>0 ? "withQuoter" : "noQuoter"); }
-function computePayout(orders){
-  const people = {};   // name -> {company,team,order,titi, rows:[]}
-  const P = n => (people[n] = people[n] || {company:0, team:0, order:0, titi:0, rows:[]});
-  const add = (name, kind, comm, o, rateLabel) => {
-    if(!name) return; const p=P(name); p[kind]+=comm;
-    if(o) p.rows.push({inv:o.inv, ref:o.ref, amt:o.amt, kind, comm, rate:rateLabel||""});
-  };
-
-  let companyBase = 0, teamBase = 0;
-  orders.forEach(o=>{
-    companyBase += o.amt;                                  // 全公司金额(公司抽成基数)
-    const tier = tierOf(o);
-    // 团队抽成基数:Jenny/Rex 全部 + Barry「有报价员」的单
-    if(RATES.teamMembers.includes(o.sales)) teamBase += o.amt;
-    else if(o.sales==="Barry" && tier==="withQuoter") teamBase += o.amt;
-
-    if(o.titiSolo){ add("TITI","titi", RATES.titi*o.amt, o, (RATES.titi*100)+"% 单独开单"); return; }
-
-    // 销售提成
-    const s=o.sales;
-    if(s && s!=="TITI"){
-      if(RATES.salesTiered[s]){
-        const t=RATES.salesTiered[s];
-        const rate = t[tier];
-        if(rate!=null) add(s,"order", rate*o.amt, o, (rate*100)+"% "+tierLabel(tier));
-        // rate==null(如 Barry withQuoter)→ 经团队抽成,不单列
-      } else if(RATES.salesFlat[s]!=null){
-        add(s,"order", RATES.salesFlat[s]*o.amt, o, (RATES.salesFlat[s]*100)+"% 统一");
-      }
-      // Chike:无按单提成(只公司抽成)
-    }
-    // 报价员提成
-    o.quoters.forEach(q=>{
-      if(RATES.quoter[q]!=null) add(q,"order", RATES.quoter[q]*o.amt, o, (RATES.quoter[q]*100)+"% 报价");
-      // Sysy:无按单提成(只公司抽成)
-    });
-  });
-
-  Object.entries(RATES.companyOverride).forEach(([n,r])=> { const p=P(n); p.company += r*companyBase; });
-  Object.entries(RATES.teamOverride).forEach(([n,r])=> { const p=P(n); p.team += r*teamBase; });
-
-  // 汇总 + 养老金
-  const rows=[];
-  Object.entries(people).forEach(([name,p])=>{
-    const gross = p.company + p.team + p.order + p.titi;
-    rows.push({name, company:p.company, team:p.team, order:p.order, titi:p.titi,
-               gross, net: gross/SUPER_DIVISOR, detail:p.rows});
-  });
-  const ord = n => { const i=SALES_ORDER.indexOf(n); return i<0 ? 99+QUOTER_ORDER.indexOf(n) : i; };
-  rows.sort((a,b)=> ord(a.name)-ord(b.name));
-  return {rows, companyBase, teamBase};
-}
-function tierLabel(t){ return t==="noQuoter"?"无报价":(t==="selfQuote"?"自报价":"有报价"); }
-
-/* 个人表格下方紧贴的提成小结(构成 + 提成合计 + ÷养老金实发),不另起标题区块 */
-function personCommissionBlock(name){
-  const PO=LAST_RESULT && LAST_RESULT.payout; if(!PO) return "";
-  const r=PO.rows.find(x=>x.name===name);
-  if(!r || Math.abs(r.gross)<0.005)
-    return `<div class="note" style="margin-top:6px">${name} 本期间没有提成(或比例待补 / 不发提成)。</div>`;
-  const parts=[];
-  if(Math.abs(r.company)>0.004) parts.push(["公司抽成 1%(全公司金额合计)", r.company]);
-  if(Math.abs(r.team)>0.004)    parts.push(["团队抽成 1.5%(Jenny+Rex+Barry有报价单)", r.team]);
-  if(Math.abs(r.order)>0.004)   parts.push(["按单提成", r.order]);
-  if(Math.abs(r.titi)>0.004)    parts.push(["TITI 单独开单 3%", r.titi]);
-  // 直接接在上面的明细表下方:一张紧凑的 2 列小表
-  let h=`<table style="margin-top:4px"><tbody>`+
-     parts.map(p=>`<tr><td>${p[0]}</td><td class="r num">$${money(p[1])}</td></tr>`).join("")+
-     `<tr class="total-row"><td>提成合计</td><td class="r num amt">$${money(r.gross)}</td></tr>`+
-     `<tr class="total-row"><td>实发(提成 ÷ ${SUPER_DIVISOR} 养老金)</td><td class="r num" style="color:var(--acc2);font-weight:700">$${money(r.net)}</td></tr>`+
-     `</tbody></table>`;
-  if(r.detail.length){
-    let b="";
-    r.detail.forEach(d=>{ b+=`<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
-      `<td class="r num">${money(d.amt)}</td><td class="ref">${d.rate}</td>`+
-      `<td class="r num amt">$${money(d.comm)}</td></tr>`; });
-    h+=`<details><summary>${name} 按单提成逐单(${r.detail.length} 笔)</summary>`+
-       `<table><thead><tr><th>单号</th><th>Reference</th><th class="r">金额(基数)</th><th>比例</th><th class="r">提成</th></tr></thead><tbody>${b}</tbody></table></details>`;
-  }
-  return h;
-}
-
 function buildPersonBar(){
   const R=LAST_RESULT; const bar=document.getElementById("personbar"); bar.innerHTML="";
-  if(viewMode==="payout"){ return; }   // 发放视图不显示人员筛选条
   const lbl=document.createElement("span"); lbl.className="pbar-label"; lbl.textContent="只看："; bar.appendChild(lbl);
   const allBtn=document.createElement("button"); allBtn.className="pbtn"+(selectedPerson==="all"?" active":"");
   allBtn.textContent="全部"; allBtn.onclick=()=>{ selectedPerson="all"; render(); buildPersonBar(); }; bar.appendChild(allBtn);
@@ -528,8 +394,7 @@ function buildPersonBar(){
   });
 }
 
-function tagFor(r){ return (r.dep?'<span class="tag dep">订金</span>':'')+(r.bal?'<span class="tag bal">尾款</span>':'')
-  +(r.selfQuote?'<span class="tag sq">自报价</span>':'')+(r.titiSolo?'<span class="tag tt">TITI单独</span>':''); }
+function tagFor(r){ return (r.dep?'<span class="tag dep">订金</span>':'')+(r.bal?'<span class="tag bal">尾款</span>':''); }
 function fmtDate(d){ return d ? d : '<span class="ref">—</span>'; }
 function tableFor(list){
   if(!list.length) return '<div class="empty">无记录</div>';
@@ -544,6 +409,7 @@ function tableFor(list){
     `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
     `<td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
 }
+// 已开单明细:显示开单日期 Issue Date(而非付款日期)
 function tableForBilled(list){
   if(!list.length) return '<div class="empty">无记录</div>';
   let sum=0, totalSum=0, feeSum=0, body="";
@@ -557,6 +423,8 @@ function tableForBilled(list){
     `<td class="r num">${money(totalSum)}</td><td class="r num">${money(feeSum)}</td>`+
     `<td class="r num amt">${money(sum)}</td></tr></tbody></table>`;
 }
+// 定金/尾款已支付清单 — 含类型/销售/客户/开单日期/付款日期
+// who=null 表示全公司;否则 {role:"sales"|"quoter", name} 只显示该人名下的单
 function depositPaidTable(who){
   let list = (LAST_RESULT && LAST_RESULT.depPaid) || [];
   let title = "全公司 · Reference 含 deposit/balance 且 Full Paid";
@@ -591,10 +459,10 @@ function groupBlock(name, list, cls, roleTag){
 function render(){
   const R=LAST_RESULT; if(!R) return;
   const out=document.getElementById("out"); out.innerHTML="";
-  if(viewMode==="payout"){ renderPayout(); return; }
   if(viewMode==="billed"){ renderBilled(); return; }
   const allSalesSum=Object.values(R.salesMap).flat().reduce((a,r)=>a+r.amt,0);
   const allQuoterSum=Object.values(R.quoterMap).flat().reduce((a,r)=>a+r.amt,0);
+  // 总收款/安装费按"发票"去重统计(一张单可能同时在多个报价员名下,避免重复加总)
   const seen={}; let totalRecv=0, feeRecv=0;
   [...Object.values(R.salesMap).flat(), ...Object.values(R.quoterMap).flat(), ...(R.noQuoter||[])].forEach(r=>{
     if(seen[r.inv]) return; seen[r.inv]=1; totalRecv+=r.total; feeRecv+=r.fee; });
@@ -610,7 +478,7 @@ function render(){
   if(selectedPerson!=="all"){
     const role=selectedPerson.role, name=selectedPerson.name;
     if(role==="sales"){
-      html+=`<div class="role-band">— 销售员 · ${name}(金额基数明细)—</div>`;
+      html+=`<div class="role-band">— 销售员 · ${name} —</div>`;
       html+=groupBlock(name, R.salesMap[name]||[], "s", "销售");
       const own=(R.noQuoter||[]).filter(r=>r.sales===name);
       html+=`<div class="role-band">— ${name} 的「只有销售、无报价员」单 —</div>`;
@@ -619,11 +487,11 @@ function render(){
       html+=`<div class="role-band">— 报价员 · ${name} —</div>`;
       html+=groupBlock(name, R.quoterMap[name]||[], "q", "报价");
     }
-    html+=personCommissionBlock(name);   // ★ 个人页:在明细表下面显示该人提成
     html+=depositPaidTable(selectedPerson);
     out.innerHTML=html; return;
   }
 
+  // 财年总览汇总表(仅 FY + 全部视图)
   if(R.mSel==="fy2025-26"){
     const rows=[];
     const agg=l=>[l.length, l.reduce((a,r)=>a+r.amt,0), l.reduce((a,r)=>a+r.fee,0), l.reduce((a,r)=>a+r.total,0)];
@@ -634,7 +502,7 @@ function render(){
     const body=rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td class="r num">${r[2]}</td><td class="r num amt">$${money(r[3])}</td><td class="r num">$${money(r[4])}</td><td class="r num">$${money(r[5])}</td></tr>`).join("");
     html+=`<div class="role-band">— 财年总览 2025-26 (2025/7/1 – 2026/6/30) —</div>`;
     html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">金额(提成基数)</th><th class="r">安装费合计</th><th class="r">总收款(含GST)</th></tr></thead><tbody>${body}</tbody></table>`;
-    html+=`<div class="note" style="margin:10px 0 20px">下方为各人员财年明细。内置快照仅含 2026 年 2–5 月;完整财年请「导入」monday 全量 CSV。提成实发请看「提成发放」视图。</div>`;
+    html+=`<div class="note" style="margin:10px 0 20px">下方为各人员财年明细。内置快照仅含 2026 年 2–5 月;完整财年请「导入」monday 全量 CSV。</div>`;
   }
 
   html+=`<div class="role-band">— 销售员 —</div>`;
@@ -652,61 +520,6 @@ function render(){
   html+=`<div class="group-title review"><h2>已跳过(非提成)</h2><span class="cnt">PO / Amend</span></div>`+tableForReview(R.skip);
   html+=`</details>`;
   html+=depositPaidTable();
-  out.innerHTML=html;
-}
-
-/* ===================================================================
-   ★ 提成发放视图
-=================================================================== */
-function renderPayout(){
-  const R=LAST_RESULT, PO=R.payout; const out=document.getElementById("out");
-  const periodLabel = R.mSel==="all" ? "全部" : (R.mSel==="fy2025-26" ? "财年 2025-26" : R.mSel);
-  const totalGross = PO.rows.reduce((a,r)=>a+r.gross,0);
-  const totalNet   = PO.rows.reduce((a,r)=>a+r.net,0);
-  document.getElementById("stats").innerHTML=
-    `<div class="stat"><div class="k">计入单数</div><div class="v g">${R.okCount}</div></div>`+
-    `<div class="stat"><div class="k">公司金额合计</div><div class="v y">$${money(PO.companyBase)}</div></div>`+
-    `<div class="stat"><div class="k">团队抽成基数(B+J+Rex)</div><div class="v y">$${money(PO.teamBase)}</div></div>`+
-    `<div class="stat"><div class="k">提成合计</div><div class="v y">$${money(totalGross)}</div></div>`+
-    `<div class="stat"><div class="k payout">实发合计 (÷${SUPER_DIVISOR})</div><div class="v pay">$${money(totalNet)}</div></div>`;
-
-  let html=`<div class="role-band">— 提成发放表 · ${periodLabel} · 实发 = 提成 ÷ ${SUPER_DIVISOR}(养老金) —</div>`;
-  const body=PO.rows.filter(r=>Math.abs(r.gross)>0.004).map(r=>{
-    const cell=v=> v? `$${money(v)}` : '<span class="ref">—</span>';
-    return `<tr><td><b>${r.name}</b></td>`+
-      `<td class="r num">${cell(r.company)}</td>`+
-      `<td class="r num">${cell(r.team)}</td>`+
-      `<td class="r num">${cell(r.order)}</td>`+
-      `<td class="r num">${cell(r.titi)}</td>`+
-      `<td class="r num amt">$${money(r.gross)}</td>`+
-      `<td class="r num" style="color:var(--acc2);font-weight:700">$${money(r.net)}</td></tr>`;
-  }).join("");
-  html+=`<table><thead><tr><th>人员</th><th class="r">公司抽成 1%</th><th class="r">团队抽成 1.5%</th>`+
-    `<th class="r">按单提成</th><th class="r">TITI</th><th class="r">提成合计</th><th class="r">实发(÷${SUPER_DIVISOR})</th></tr></thead>`+
-    `<tbody>${body}<tr class="total-row"><td>合计</td><td colspan="4"></td>`+
-    `<td class="r num amt">$${money(totalGross)}</td><td class="r num" style="color:var(--acc2)">$${money(totalNet)}</td></tr></tbody></table>`;
-
-  // 每人逐单明细
-  html+=`<div class="role-band" style="margin-top:26px">— 每人逐单提成明细 —</div>`;
-  PO.rows.filter(r=>r.detail.length).forEach(r=>{
-    html+=`<details><summary>${r.name} — ${r.detail.length} 笔按单提成,小计 $${money(r.order+r.titi)}`+
-      (r.company?` ＋公司抽成 $${money(r.company)}`:``)+(r.team?` ＋团队抽成 $${money(r.team)}`:``)+`</summary>`;
-    let b="";
-    r.detail.forEach(d=>{ b+=`<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
-      `<td class="r num">${money(d.amt)}</td><td class="ref">${d.rate}</td>`+
-      `<td class="r num amt">$${money(d.comm)}</td></tr>`; });
-    html+=`<table><thead><tr><th>单号</th><th>Reference</th><th class="r">金额(基数)</th><th>比例</th><th class="r">提成</th></tr></thead><tbody>${b}</tbody></table></details>`;
-  });
-
-  html+=`<div class="note">`+
-    `<b>规则</b>:基数=金额(Total÷1.1−安装费)。<b>实发=该人提成合计 ÷ ${SUPER_DIVISOR}(养老金)</b>。<br>`+
-    `· <b>Chike / Sysy</b>:全公司计入单金额合计 × 1%(不另按单)。<br>`+
-    `· <b>Barry</b>:(Jenny+Rex+Barry有报价员单)金额 × 1.5%(团队抽成)＋ 自己无报价单 4.5% ＋ 自报价单 3%。<br>`+
-    `· <b>Jenny</b>:无报价 4.5% / 自报价(je-j) 3% / 有独立报价员 1.5%。　<b>Jack</b>:1.5%。<br>`+
-    `· <b>Sandy</b> 3.25%、<b>Khin</b> 1%、<b>Carine</b> 1.5%(按各自名下金额)。<b>TITI</b> 3%,仅整单只有 TITI(如 titi-0)。<br>`+
-    `· 不发提成:Rex、Harry、Fiona、Estella(Rex 的销售额仍计入 Barry 团队抽成基数)。改 <code>RATES</code> 配置即可。<br>`+
-    `<b>假设</b>(请核对):公司/团队抽成基数用"金额"口径;Jenny 有报价员时取 1.5%;Barry 团队基数排除其自己 4.5%/3% 的单。`+
-    `</div>`;
   out.innerHTML=html;
 }
 
@@ -731,6 +544,7 @@ function renderBilled(){
   html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额</th></tr></thead><tbody>${body}`+
     `<tr class="total-row"><td colspan="2">全公司合计</td><td class="r num">${B.bAllInv}</td><td class="r num">$${money(B.bAllTot)}</td><td class="r num">$${money(B.bAllFee)}</td><td class="r num amt">$${money(B.bAllAmt)}</td></tr></tbody></table>`;
 
+  // 明细(含开单日期列)
   if(selectedPerson!=="all"){
     const role=selectedPerson.role, name=selectedPerson.name;
     const list = role==="sales" ? (B.bSales[name]||[]) : (B.bQuoter[name]||[]);
@@ -768,7 +582,8 @@ function stripCustomer(name, invVal){ let s=String(name||"").trim();
   if(invVal) s=s.replace(invVal,"").replace(/^\s*[-–:]\s*/,"");
   return s.trim();
 }
-document.getElementById("csv").addEventListener("change", e=>{
+const csvEl=document.getElementById("csv");
+if(csvEl) csvEl.addEventListener("change", e=>{
   const f=e.target.files[0]; if(!f) return;
   const rd=new FileReader();
   rd.onload=()=>{ try{
@@ -785,7 +600,7 @@ document.getElementById("csv").addEventListener("change", e=>{
     const data=[]; let creditSkipped=0;
     for(let r=1;r<rows.length;r++){ const row=rows[r];
       const st = iSt>=0?(row[iSt]||""):"";
-      if(isCredit(st)){ creditSkipped++; continue; }
+      if(isCredit(st)){ creditSkipped++; continue; }   // Credit 单不导入
       const invV = iInv>=0?(row[iInv]||"").trim():"";
       const nameV= iName>=0?(row[iName]||"").trim():"";
       const tot=parseFloat(String(row[iTot]||"").replace(/[^0-9.\-]/g,""))||0;
@@ -812,44 +627,32 @@ function normDate(s){ s=(s||"").trim(); if(!s) return null;
 
 document.getElementById("export").addEventListener("click", ()=>{
   if(!LAST_RESULT){ alert("请先点「计算」"); return; }
-  const R=LAST_RESULT;
-  if(viewMode==="payout"){
-    const lines=[["人员","公司抽成","团队抽成","按单提成","TITI","提成合计","实发(÷"+SUPER_DIVISOR+")"]];
-    R.payout.rows.forEach(r=>{ if(Math.abs(r.gross)<0.004) return;
-      lines.push([r.name, r.company.toFixed(2), r.team.toFixed(2), r.order.toFixed(2), r.titi.toFixed(2), r.gross.toFixed(2), r.net.toFixed(2)]); });
-    downloadCSV(lines, `payout_${R.mSel}.csv`); return;
-  }
-  const lines=[["角色","人员","单号","Reference","付款日期","Total","安装费","金额","订金/尾款"]];
-  const tag=r=>(r.dep?"订金":"")+(r.bal?"尾款":"")+(r.selfQuote?"自报价":"");
+  const R=LAST_RESULT; const lines=[["角色","人员","单号","Reference","付款日期","Total","安装费","金额","订金/尾款"]];
+  const tag=r=>(r.dep?"订金":"")+(r.bal?"尾款":"");
   const push=(role,name,list)=>list.forEach(r=>lines.push([role,name,r.inv,r.ref,r.fpd||"",r.total,r.fee,r.amt,tag(r)]));
   SALES_ORDER.forEach(n=>{ if(R.salesMap[n]) push("销售",n,R.salesMap[n]); });
   QUOTER_ORDER.forEach(n=>{ if(R.quoterMap[n]) push("报价",n,R.quoterMap[n]); });
   (R.noQuoter||[]).forEach(r=>lines.push(["仅销售(无报价)",r.sales||"",r.inv,r.ref,r.fpd||"",r.total,r.fee,r.amt,tag(r)]));
-  downloadCSV(lines, `commission_${R.mSel}.csv`);
-});
-function downloadCSV(lines, name){
   const csv=lines.map(r=>r.map(x=>{ const s=String(x); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(",")).join("\n");
-  const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
-  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name; a.click();
-}
+  const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=`commission_${R.mSel}.csv`; a.click();
+});
 
 document.getElementById("legend").innerHTML=
   "<b>计算规则</b>:金额 = Total ÷ 1.1 (去 GST) − 安装费。<b>销售</b>=第一段(一人);<b>报价</b>=后面所有报价代码(可多人,各自名下都计入)。<br>"+
-  "<b>代码</b>:销售 ba=Barry, ck=Chike, je=Jenny, ja=Jack, rex=Rex, ha=Harry, f=Fiona;报价 kh=Khin, sy=Sysy, sa=Sandy, ca=Carine, es=Estella;自报价 b=Barry, j=Jenny;ti/titi=TITI。<br>"+
-  "<b>提成发放</b>:点上方「★ 提成发放」按钮,按每人比例算实发(已 ÷1.12 养老金)。比例在代码 <code>RATES</code> 配置处修改。<br>"+
+  "<b>代码</b>:销售 ba=Barry, ck=Chike, je=Jenny, ja=Jack, rex=Rex, ha=Harry, f=Fiona;报价 kh=Khin, sy=Sysy, sa=Sandy, ca=Carine, es=Estella。<br>"+
   "<b>人员按钮</b>:点上方按钮只看某个销售/报价员的表(销售视图含其「无报价员」单)。点「全部」恢复。<br>"+
   "<b>订金/尾款</b>:Reference 含 deposit/balance 关键词的单,按同客户配对;只有该组全部 Full Paid 才计提成,否则进「待结清」。<b>需导入含 Payment Status 与客户名(Name 列)的完整 CSV 才生效</b>。<br>"+
-  "<b>财年总览</b>:月份下拉选「★ 财年总览 2025-26」即按 2025/7/1–2026/6/30 汇总。<br>"+
+  "<b>财年总览</b>:月份下拉选「★ 财年总览 2025-26」即按 2025/7/1–2026/6/30 汇总,顶部显示各人员合计表。<br>"+
   "<b>更新数据</b>:monday 导出 board 为 CSV(含 Name、Reference、Total (AUD)、Payment Status、Full Paid 日期)→「导入」。「从 monday 更新」按钮需先部署后台并填 BACKEND_URL;否则会回退到 CSV 导入。<b>纯网页无法安全直连 monday。</b><br>"+
   "<b>密码</b>:在代码 ACCESS_PASSWORD 处修改。注意这是基础门,真正的外部加密访问需服务器端密码保护(如 Netlify/Vercel 的 password protection)。";
 
+/* init:优先读取 data.json(GitHub Pages 由 Action 生成),否则用内置快照 */
 document.getElementById("go").addEventListener("click", ()=>{ compute(); });
 (function(){
-  const mc=document.getElementById("modeCommission"), mb=document.getElementById("modeBilled"), mp=document.getElementById("modePayout");
-  const setMode=(m,btn)=>{ viewMode=m; [mc,mb,mp].forEach(x=>x.classList.remove("active")); btn.classList.add("active"); buildPersonBar(); render(); };
-  mc.addEventListener("click", ()=> setMode("commission", mc));
-  mb.addEventListener("click", ()=> setMode("billed", mb));
-  mp.addEventListener("click", ()=> setMode("payout", mp));
+  const mc=document.getElementById("modeCommission"), mb=document.getElementById("modeBilled");
+  mc.addEventListener("click", ()=>{ viewMode="commission"; mc.classList.add("active"); mb.classList.remove("active"); render(); });
+  mb.addEventListener("click", ()=>{ viewMode="billed"; mb.classList.add("active"); mc.classList.remove("active"); render(); });
 })();
 (async function init(){
   try{
@@ -879,15 +682,14 @@ document.getElementById("gatePw").addEventListener("keydown", e=>{ if(e.key==="E
 /* ---------- 从 monday 更新(需后台) ---------- */
 document.getElementById("syncBtn").addEventListener("click", async ()=>{
   if(!BACKEND_URL){
-    alert("尚未配置后台地址(代码顶部 BACKEND_URL 为空)。\n\n纯网页无法安全直连 monday(会暴露密钥)。\n现在改用「导入 CSV」加载 monday 导出的最新数据。\n\n若要一键自动同步,请部署后台服务并填入 BACKEND_URL。");
-    document.getElementById("csv").click();
+    alert("尚未配置后台地址(代码顶部 BACKEND_URL 为空)。请部署 GitHub Action 生成 data.json 后再使用一键同步。");
     return;
   }
   const btn=document.getElementById("syncBtn"); const old=btn.textContent; btn.textContent="⟳ 更新中…"; btn.disabled=true;
   try{
     const res=await fetch(BACKEND_URL,{headers:{"Accept":"application/json"}});
     if(!res.ok) throw new Error("HTTP "+res.status);
-    const json=await res.json();
+    const json=await res.json();   // 期望格式: [{inv,ref,total,fpd,status,customer}, ...]
     if(!Array.isArray(json)||!json.length) throw new Error("返回数据为空或格式不对");
     DATA=json.filter(d=>!isCredit(d.status)).map(d=>({inv:d.inv||"", ref:d.ref||"", total:Number(d.total)||0,
       fpd:d.fpd||null, issue:d.issue||null, status:d.status||"", customer:d.customer||""}));
