@@ -611,7 +611,6 @@ function render(){
   let html="";
   if(selectedPerson!=="all"){
     const role=selectedPerson.role, name=selectedPerson.name;
-    html+=personCommissionBlock(name);   // ★ 个人页:先显示该人提成
     if(role==="sales"){
       html+=`<div class="role-band">— 销售员 · ${name}(金额基数明细)—</div>`;
       html+=groupBlock(name, R.salesMap[name]||[], "s", "销售");
@@ -622,6 +621,7 @@ function render(){
       html+=`<div class="role-band">— 报价员 · ${name} —</div>`;
       html+=groupBlock(name, R.quoterMap[name]||[], "q", "报价");
     }
+    html+=personCommissionBlock(name);   // ★ 个人页:在明细表下面显示该人提成
     html+=depositPaidTable(selectedPerson);
     out.innerHTML=html; return;
   }
@@ -691,7 +691,7 @@ function renderPayout(){
   // 每人逐单明细
   html+=`<div class="role-band" style="margin-top:26px">— 每人逐单提成明细 —</div>`;
   PO.rows.filter(r=>r.detail.length).forEach(r=>{
-    html+=`<details><summary>${r.name} — ${r.detail.length} 笔按单/TITI 提成,小计 $${money(r.order+r.titi)}`+
+    html+=`<details><summary>${r.name} — ${r.detail.length} 笔按单提成,小计 $${money(r.order+r.titi)}`+
       (r.company?` ＋公司抽成 $${money(r.company)}`:``)+(r.team?` ＋团队抽成 $${money(r.team)}`:``)+`</summary>`;
     let b="";
     r.detail.forEach(d=>{ b+=`<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
