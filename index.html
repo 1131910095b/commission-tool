@@ -58,6 +58,7 @@
   tbody tr:hover{background:#1a212b}
   .total-row td{font-weight:700;background:#10151c;border-top:2px solid var(--line)}
   .total-row .amt{color:var(--acc)}
+  .calc-note{font-size:11px;opacity:.72;margin:6px 4px 12px;line-height:1.6}
   .ref{color:var(--mut);font-size:12px}
   .fee{color:var(--mut)}
   .empty{color:var(--mut);padding:14px;text-align:center;font-style:italic}
@@ -428,17 +429,17 @@ function computePayout(orders){
   const P = n => (people[n] = people[n] || {company:0, team:0, order:0, titi:0, rows:[]});
   const add = (name, kind, comm, o, rateLabel) => {
     if(!name) return; const p=P(name); p[kind]+=comm;
-    if(o) p.rows.push({inv:o.inv, ref:o.ref, amt:o.amt, kind, comm, rate:rateLabel||""});
+    if(o) p.rows.push({inv:o.inv, ref:o.ref, amt:o.amt, total:o.total, fee:o.fee, kind, comm, rate:rateLabel||""});
   };
 
   let companyBase = 0, teamBase = 0; const teamRows = [], allRows = [];
   orders.forEach(o=>{
     companyBase += o.amt;                                  // 全公司金额(公司抽成基数)
-    allRows.push({inv:o.inv, ref:o.ref, amt:o.amt, sales:o.sales});
+    allRows.push({inv:o.inv, ref:o.ref, amt:o.amt, total:o.total, fee:o.fee, sales:o.sales});
     const tier = tierOf(o);
     // 团队抽成基数:Jenny/Rex 全部 + Barry「有报价员」的单
-    if(RATES.teamMembers.includes(o.sales)){ teamBase += o.amt; teamRows.push({inv:o.inv, ref:o.ref, amt:o.amt, sales:o.sales}); }
-    else if(o.sales==="Barry" && tier==="withQuoter"){ teamBase += o.amt; teamRows.push({inv:o.inv, ref:o.ref, amt:o.amt, sales:o.sales}); }
+    if(RATES.teamMembers.includes(o.sales)){ teamBase += o.amt; teamRows.push({inv:o.inv, ref:o.ref, amt:o.amt, total:o.total, fee:o.fee, sales:o.sales}); }
+    else if(o.sales==="Barry" && tier==="withQuoter"){ teamBase += o.amt; teamRows.push({inv:o.inv, ref:o.ref, amt:o.amt, total:o.total, fee:o.fee, sales:o.sales}); }
 
     if(o.titiSolo){ add("TITI","titi", RATES.titi*o.amt, o, (RATES.titi*100)+"% 单独开单"); return; }
 
@@ -463,9 +464,9 @@ function computePayout(orders){
   });
 
   Object.entries(RATES.companyOverride).forEach(([n,r])=> { const p=P(n); p.company += r*companyBase;
-    p.companyRows = allRows.map(t=>({inv:t.inv, ref:t.ref, amt:t.amt, sales:t.sales, comm:r*t.amt})); });
+    p.companyRows = allRows.map(t=>({inv:t.inv, ref:t.ref, amt:t.amt, total:t.total, fee:t.fee, sales:t.sales, comm:r*t.amt})); });
   Object.entries(RATES.teamOverride).forEach(([n,r])=> { const p=P(n); p.team += r*teamBase;
-    p.teamRows = teamRows.map(t=>({inv:t.inv, ref:t.ref, amt:t.amt, sales:t.sales, comm:r*t.amt})); });
+    p.teamRows = teamRows.map(t=>({inv:t.inv, ref:t.ref, amt:t.amt, total:t.total, fee:t.fee, sales:t.sales, comm:r*t.amt})); });
 
   // 汇总 + 养老金
   const rows=[];
@@ -499,19 +500,25 @@ function personCommissionBlock(name){
      `<tr class="total-row"><td>实发(提成 ÷ ${SUPER_DIVISOR} 养老金)</td><td class="r num" style="color:var(--acc2);font-weight:700">$${money(r.net)}</td></tr>`+
      `</tbody></table>`;
   // 每种提成都给一张可展开的逐单明细表
-  const detailTable=(title,list,col4head,col4key)=>{
+  const detailTable=(title,list,col4head,col4key,note)=>{
     if(!list || !list.length) return "";
-    const b=list.map(d=>`<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
+    let tT=0,tF=0,tB=0,tC=0;
+    const b=list.map(d=>{ tT+=d.total||0; tF+=d.fee||0; tB+=d.amt||0; tC+=d.comm||0;
+      return `<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
+      `<td class="r num">${money(d.total||0)}</td><td class="r num">${money(d.fee||0)}</td>`+
       `<td class="r num">${money(d.amt)}</td><td class="ref">${escapeHtml(String(d[col4key]||""))}</td>`+
-      `<td class="r num amt">$${money(d.comm)}</td></tr>`).join("");
-    const sub=list.reduce((s,d)=>s+(d.comm||0),0);
-    return `<details><summary>${title}(${list.length} 笔,小计 $${money(sub)})</summary>`+
-       `<table><thead><tr><th>单号</th><th>Reference</th><th class="r">金额(基数)</th><th>${col4head}</th><th class="r">提成</th></tr></thead>`+
-       `<tbody>${b}</tbody></table></details>`;
+      `<td class="r num amt">$${money(d.comm)}</td></tr>`; }).join("");
+    return `<details><summary>${title}(${list.length} 笔,提成小计 $${money(tC)})</summary>`+
+       `<table><thead><tr><th>单号</th><th>Reference</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额(基数)</th><th>${col4head}</th><th class="r">提成</th></tr></thead><tbody>${b}`+
+       `<tr class="total-row"><td colspan="2">合计 ${list.length} 笔</td><td class="r num">${money(tT)}</td><td class="r num">${money(tF)}</td><td class="r num">${money(tB)}</td><td></td><td class="r num amt">$${money(tC)}</td></tr>`+
+       `</tbody></table><div class="calc-note">${note}</div></details>`;
   };
-  h+=detailTable(`${name} 公司抽成逐单`, r.companyDetail, "销售", "sales");
-  h+=detailTable(`${name} 团队抽成逐单`, r.teamDetail,    "销售", "sales");
-  h+=detailTable(`${name} 按单提成逐单`, r.detail,        "比例", "rate");
+  h+=detailTable(`${name} 公司抽成逐单`, r.companyDetail, "销售", "sales",
+    "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费；　提成 = 基数 × 1%（全公司所有 Full Paid 单）。");
+  h+=detailTable(`${name} 团队抽成逐单`, r.teamDetail, "销售", "sales",
+    "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费；　提成 = 基数 × 1.5%（计入：Jenny + Rex 全部单 + Barry 有报价员的单）。");
+  h+=detailTable(`${name} 按单提成逐单`, r.detail, "比例", "rate",
+    "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费；　提成 = 基数 × 该行比例（销售：无报价 4.5% / 自报价 3% / Jenny 有报价 1.5%；报价员：Sandy 3.25% / Khin 1% / Carine 1.5%；Jack 1.5%；TITI 单独开单 3%）。");
   return h;
 }
 
