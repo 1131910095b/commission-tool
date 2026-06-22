@@ -909,7 +909,7 @@ document.getElementById("go").addEventListener("click", ()=>{ compute(); });
 })();
 (async function init(){
   try{
-    const r=await fetch("data.json",{cache:"no-store"});
+    const r=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
     if(r.ok){
       const j=await r.json();
       if(Array.isArray(j)&&j.length){
@@ -941,7 +941,7 @@ document.getElementById("syncBtn").addEventListener("click", async ()=>{
   }
   const btn=document.getElementById("syncBtn"); const old=btn.textContent; btn.textContent="⟳ 更新中…"; btn.disabled=true;
   try{
-    const res=await fetch(BACKEND_URL,{headers:{"Accept":"application/json"}});
+    const res=await fetch(BACKEND_URL+(BACKEND_URL.includes("?")?"&":"?")+"t="+Date.now(),{cache:"no-store",headers:{"Accept":"application/json"}});
     if(!res.ok) throw new Error("HTTP "+res.status);
     const json=await res.json();
     if(!Array.isArray(json)||!json.length) throw new Error("返回数据为空或格式不对");
@@ -955,4 +955,4 @@ document.getElementById("syncBtn").addEventListener("click", async ()=>{
 });
 </script>
 </body>
-</html> 
+</html>
