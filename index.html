@@ -59,6 +59,8 @@
   .total-row td{font-weight:700;background:#10151c;border-top:2px solid var(--line)}
   .total-row .amt{color:var(--acc)}
   .calc-note{font-size:11px;opacity:.72;margin:6px 4px 12px;line-height:1.6}
+  .dtbl th{cursor:pointer;user-select:none;white-space:nowrap}
+  .dtbl th:hover{color:var(--acc)}
   .ref{color:var(--mut);font-size:12px}
   .fee{color:var(--mut)}
   .empty{color:var(--mut);padding:14px;text-align:center;font-style:italic}
@@ -429,7 +431,7 @@ function computePayout(orders){
   const P = n => (people[n] = people[n] || {company:0, team:0, order:0, titi:0, rows:[]});
   const add = (name, kind, comm, o, rateLabel) => {
     if(!name) return; const p=P(name); p[kind]+=comm;
-    if(o) p.rows.push({inv:o.inv, ref:o.ref, amt:o.amt, total:o.total, fee:o.fee, kind, comm, rate:rateLabel||""});
+    if(o) p.rows.push({inv:o.inv, ref:o.ref, amt:o.amt, total:o.total, fee:o.fee, sales:o.sales, kind, comm, rate:rateLabel||""});
   };
 
   let companyBase = 0, teamBase = 0; const teamRows = [], allRows = [];
@@ -482,6 +484,55 @@ function computePayout(orders){
 }
 function tierLabel(t){ return t==="noQuoter"?"无报价":(t==="selfQuote"?"自报价":"有报价"); }
 
+/* ===== 可点表头排序的逐单明细表 ===== */
+let DT_SEQ=0; const DETAIL_TABLES={};
+const DT_NUMERIC={total:1,fee:1,amt:1,comm:1,rateNum:1};
+function dtInner(id){
+  const st=DETAIL_TABLES[id]; if(!st) return "";
+  const dir=st.dir, key=st.key;
+  const rows=st.rows.slice().sort((a,b)=>{
+    if(DT_NUMERIC[key]) return dir*((a[key]||0)-(b[key]||0));
+    return dir*String(a[key]==null?"":a[key]).localeCompare(String(b[key]==null?"":b[key]),"en",{numeric:true});
+  });
+  const arrow=k=> key===k ? (dir>0?' ▲':' ▼') : '';
+  let tT=0,tF=0,tB=0,tC=0;
+  const body=rows.map(d=>{ tT+=d.total||0; tF+=d.fee||0; tB+=d.amt||0; tC+=d.comm||0;
+    return `<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
+      `<td>${escapeHtml(d.sales||"")}</td>`+
+      `<td class="r num">${money(d.total||0)}</td><td class="r num">${money(d.fee||0)}</td>`+
+      `<td class="r num">${money(d.amt||0)}</td><td class="ref">${escapeHtml(d.rate||"")}</td>`+
+      `<td class="r num amt">$${money(d.comm||0)}</td></tr>`; }).join("");
+  const head=`<thead><tr>`+
+    `<th onclick="sortDetail('${id}','inv')">单号${arrow('inv')}</th>`+
+    `<th onclick="sortDetail('${id}','ref')">Reference${arrow('ref')}</th>`+
+    `<th onclick="sortDetail('${id}','sales')">销售${arrow('sales')}</th>`+
+    `<th class="r" onclick="sortDetail('${id}','total')">Total(含GST)${arrow('total')}</th>`+
+    `<th class="r" onclick="sortDetail('${id}','fee')">安装费${arrow('fee')}</th>`+
+    `<th class="r" onclick="sortDetail('${id}','amt')">金额(基数)${arrow('amt')}</th>`+
+    `<th onclick="sortDetail('${id}','rateNum')">比例${arrow('rateNum')}</th>`+
+    `<th class="r" onclick="sortDetail('${id}','comm')">提成${arrow('comm')}</th>`+
+    `</tr></thead>`;
+  return head+`<tbody>${body}<tr class="total-row"><td colspan="3">合计 ${rows.length} 笔</td>`+
+    `<td class="r num">${money(tT)}</td><td class="r num">${money(tF)}</td><td class="r num">${money(tB)}</td>`+
+    `<td></td><td class="r num amt">$${money(tC)}</td></tr></tbody>`;
+}
+function dtRender(id){ const el=document.getElementById('dtbody_'+id); if(el) el.innerHTML=dtInner(id); }
+function sortDetail(id,key){ const st=DETAIL_TABLES[id]; if(!st) return;
+  if(st.key===key) st.dir=-st.dir; else { st.key=key; st.dir=DT_NUMERIC[key]?-1:1; }
+  dtRender(id); }
+function detailTableSortable(title, list, defKey, defDir, note){
+  if(!list || !list.length) return "";
+  const id='dt'+(++DT_SEQ);
+  const rows=list.map(d=>({inv:d.inv, ref:d.ref, sales:d.sales||"", total:d.total||0, fee:d.fee||0,
+     amt:d.amt||0, comm:d.comm||0, rate:d.rate||"",
+     rateNum: parseFloat(String(d.rate||"").replace(/[^0-9.\-]/g,""))||0 }));
+  DETAIL_TABLES[id]={rows, key:defKey||'inv', dir:defDir||1};
+  const tC=rows.reduce((a,d)=>a+d.comm,0);
+  return `<details><summary>${title}(${rows.length} 笔,提成小计 $${money(tC)})</summary>`+
+    `<table id="dtbody_${id}" class="dtbl">${dtInner(id)}</table>`+
+    `<div class="calc-note">${note}　(点表头可排序)</div></details>`;
+}
+
 /* 个人表格下方紧贴的提成小结(构成 + 提成合计 + ÷养老金实发),不另起标题区块 */
 function personCommissionBlock(name){
   const PO=LAST_RESULT && LAST_RESULT.payout; if(!PO) return "";
@@ -499,26 +550,17 @@ function personCommissionBlock(name){
      `<tr class="total-row"><td>提成合计</td><td class="r num amt">$${money(r.gross)}</td></tr>`+
      `<tr class="total-row"><td>实发(提成 ÷ ${SUPER_DIVISOR} 养老金)</td><td class="r num" style="color:var(--acc2);font-weight:700">$${money(r.net)}</td></tr>`+
      `</tbody></table>`;
-  // 每种提成都给一张可展开的逐单明细表
-  const detailTable=(title,list,col4head,col4key,note)=>{
-    if(!list || !list.length) return "";
-    let tT=0,tF=0,tB=0,tC=0;
-    const b=list.map(d=>{ tT+=d.total||0; tF+=d.fee||0; tB+=d.amt||0; tC+=d.comm||0;
-      return `<tr><td>${d.inv}</td><td class="ref">${escapeHtml(d.ref)}</td>`+
-      `<td class="r num">${money(d.total||0)}</td><td class="r num">${money(d.fee||0)}</td>`+
-      `<td class="r num">${money(d.amt)}</td><td class="ref">${escapeHtml(String(d[col4key]||""))}</td>`+
-      `<td class="r num amt">$${money(d.comm)}</td></tr>`; }).join("");
-    return `<details><summary>${title}(${list.length} 笔,提成小计 $${money(tC)})</summary>`+
-       `<table><thead><tr><th>单号</th><th>Reference</th><th class="r">Total(含GST)</th><th class="r">安装费</th><th class="r">金额(基数)</th><th>${col4head}</th><th class="r">提成</th></tr></thead><tbody>${b}`+
-       `<tr class="total-row"><td colspan="2">合计 ${list.length} 笔</td><td class="r num">${money(tT)}</td><td class="r num">${money(tF)}</td><td class="r num">${money(tB)}</td><td></td><td class="r num amt">$${money(tC)}</td></tr>`+
-       `</tbody></table><div class="calc-note">${note}</div></details>`;
-  };
-  h+=detailTable(`${name} 公司抽成逐单`, r.companyDetail, "销售", "sales",
+  // 每种提成给一张可点表头排序的逐单明细表
+  // 公司抽成逐单(默认按销售名字 A–Z)
+  const companyRows=(r.companyDetail||[]).map(d=>({...d, rate:"1% 公司"}));
+  h+=detailTableSortable(`${name} 公司抽成逐单`, companyRows, 'sales', 1,
     "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费；　提成 = 基数 × 1%（全公司所有 Full Paid 单）。");
-  h+=detailTable(`${name} 团队抽成逐单`, r.teamDetail, "销售", "sales",
-    "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费；　提成 = 基数 × 1.5%（计入：Jenny + Rex 全部单 + Barry 有报价员的单）。");
-  h+=detailTable(`${name} 按单提成逐单`, r.detail, "比例", "rate",
-    "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费；　提成 = 基数 × 该行比例（销售：无报价 4.5% / 自报价 3% / Jenny 有报价 1.5%；报价员：Sandy 3.25% / Khin 1% / Carine 1.5%；Jack 1.5%；TITI 单独开单 3%）。");
+  // 团队抽成 + 按单提成 合并成一张表(默认按比例 高→低)
+  const teamRows=(r.teamDetail||[]).map(d=>({...d, rate:"1.5% 团队"}));
+  const mergedRows=teamRows.concat(r.detail||[]);
+  const mergedTitle = teamRows.length ? `${name} 团队+按单提成逐单` : `${name} 按单提成逐单`;
+  h+=detailTableSortable(mergedTitle, mergedRows, 'rateNum', -1,
+    "计算方式：金额(基数) = Total(含GST) ÷ 1.1 − 安装费。团队抽成 = 基数 × 1.5%（Jenny + Rex 全部单 + Barry 有报价员的单）；按单提成 = 基数 × 该行比例（销售：无报价 4.5% / 自报价 3% / Jenny 有报价 1.5%；报价员：Sandy 3.25% / Khin 1% / Carine 1.5%；Jack 1.5%；TITI 单独开单 3%）。");
   return h;
 }
 
@@ -913,4 +955,4 @@ document.getElementById("syncBtn").addEventListener("click", async ()=>{
 });
 </script>
 </body>
-</html>
+</html> 
