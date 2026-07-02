@@ -121,7 +121,7 @@
 <div class="wrap">
   <div class="controls">
     <div class="ctl">
-      <label>期间(财年 2025-26)</label>
+      <label>期间(财年 7/1–6/30)</label>
       <select id="month"></select>
     </div>
     <button class="btn-go" id="go">计算</button>
@@ -234,9 +234,24 @@ const TITI_CODES = ["ti","titi","titty","t"];   // TITI 代号(单独开单才�
 const SALES_ORDER   = ["Barry","Chike","Jenny","Jack","Rex","Harry","Fiona","TITI"];
 const QUOTER_ORDER  = ["Khin","Sysy","Sandy","Carine","Estella"];
 const GST = 1.1;
-const FY_START = "2025-07-01", FY_END = "2026-06-30";   // 财年 2025-26
 const BACKEND_URL = "data.json";   // GitHub Pages 上由 Action 定时生成;留空则「更新」按钮回退为 CSV 导入
-function inFY(fpd){ return fpd && fpd>=FY_START && fpd<=FY_END; }
+
+/* ===== 财年(7/1–6/30)动态生成,每年自动出现新财年 ===== */
+function fyStartYear(dateStr){            // "2026-07-02" -> 2026 (即财年 2026-27)
+  if(!dateStr) return null;
+  const y=+dateStr.slice(0,4), m=+dateStr.slice(5,7);
+  return m>=7 ? y : y-1;
+}
+function fyValue(y){ return "fy"+y+"-"+String((y+1)%100).padStart(2,"0"); }       // fy2026-27
+function fyLabel(y){ return y+"-"+String((y+1)%100).padStart(2,"0"); }            // 2026-27
+function fyRange(mSel){                   // "fy2026-27" -> {y, start, end};非财年选项返回 null
+  const m=/^fy(\d{4})-\d{2}$/.exec(mSel||""); if(!m) return null;
+  const y=+m[1]; return {y, start:y+"-07-01", end:(y+1)+"-06-30"};
+}
+function currentFYStartYear(){
+  const now=new Date();
+  return now.getMonth()+1>=7 ? now.getFullYear() : now.getFullYear()-1;
+}
 
 /* ===================================================================
    提成比例配置(★ 改这里即可,不用动下面的逻辑)
@@ -317,22 +332,25 @@ function isFullPaid(st){ const s=(st||"").toLowerCase(); return s.includes("full
 function isCredit(st){ const s=(st||"").toLowerCase(); return s.includes("credit")||s.includes("贷项")||s.includes("退"); }
 
 function buildMonths(){
-  // 只显示财年(2025/7/1–2026/6/30):财年总览 + 财年内各月
-  const FY_MONTHS = ["2025-07","2025-08","2025-09","2025-10","2025-11","2025-12",
-                     "2026-01","2026-02","2026-03","2026-04","2026-05","2026-06"];
+  // 财年总览(数据里出现过的每个财年 + 当前财年)+ 数据里出现过的各月
   const sel = document.getElementById("month"); sel.innerHTML = "";
-  const ofy=document.createElement("option"); ofy.value="fy2025-26"; ofy.textContent="★ 财年总览 2025-26 (7/1–6/30)"; sel.appendChild(ofy);
-  // 只列出数据里出现过、且落在财年内的月份
   const present = new Set(DATA.map(d=>monthOf(d.fpd)));
   DATA.forEach(d=>{ if(d.issue) present.add(monthOf(d.issue)); });
-  FY_MONTHS.filter(m=>present.has(m)).reverse().forEach(m=>{
+  present.delete("无日期");
+  const fys = new Set([currentFYStartYear()]);
+  present.forEach(m=>{ const y=fyStartYear(m+"-01"); if(y!=null) fys.add(y); });
+  [...fys].sort((a,b)=>b-a).forEach(y=>{
+    const o=document.createElement("option"); o.value=fyValue(y);
+    o.textContent="★ 财年总览 "+fyLabel(y)+" (7/1–6/30)"; sel.appendChild(o); });
+  [...present].sort().reverse().forEach(m=>{
     const o=document.createElement("option"); o.value=m; o.textContent=m; sel.appendChild(o); });
-  sel.value = "fy2025-26";   // 默认财年总览
+  sel.value = fyValue(currentFYStartYear());   // 默认当前财年总览
 }
 
 let LAST_RESULT = null;
 function compute(){
   const mSel = document.getElementById("month").value;
+  const fyR = fyRange(mSel);   // 选中财年总览时为 {start,end},否则 null
   const hasStatus = DATA.some(d=>d.status && d.status.trim()!=="");
 
   const settle = {};
@@ -366,7 +384,7 @@ function compute(){
     if(!paid) return;
     if(p.status==="skip"){ skip.push({...rec,note:p.note}); return; }
     if(p.status==="review"){ review.push({...rec,note:p.note}); return; }
-    if(mSel==="fy2025-26"){ if(!inFY(d.fpd)) return; }
+    if(fyR){ if(!(d.fpd && d.fpd>=fyR.start && d.fpd<=fyR.end)) return; }
     else if(mSel!=="all" && monthOf(d.fpd)!==mSel) return;
     okCount++;
     payoutOrders.push(rec);
@@ -383,7 +401,7 @@ function compute(){
   // ===== 已开单统计(排除 Credit;数据加载时 Credit 已剔除)=====
   const bSales={}, bQuoter={}, bNoQuoter=[], bAll=[]; let bAllInv=0,bAllTot=0,bAllFee=0,bAllAmt=0;
   DATA.forEach(d=>{
-    if(mSel==="fy2025-26"){ if(!(d.issue && d.issue>=FY_START && d.issue<=FY_END)) return; }
+    if(fyR){ if(!(d.issue && d.issue>=fyR.start && d.issue<=fyR.end)) return; }
     else if(mSel!=="all" && mSel!=="无日期"){ if(!(d.issue && monthOf(d.issue)===mSel)) return; }
     const p=parseRef(d.ref,d.inv);
     if(p.status==="skip") return;                 // PO/Amend 不算
@@ -404,7 +422,7 @@ function compute(){
   const depPaid=[];
   DATA.forEach(d=>{
     if(!((isDeposit(d.ref)||isBalance(d.ref)) && isFullPaid(d.status))) return;
-    if(mSel==="fy2025-26"){ if(!inFY(d.fpd)) return; }
+    if(fyR){ if(!(d.fpd && d.fpd>=fyR.start && d.fpd<=fyR.end)) return; }
     else if(mSel!=="all" && mSel!=="无日期"){ if(monthOf(d.fpd)!==mSel) return; }
     const p=parseRef(d.ref,d.inv);
     depPaid.push({inv:d.inv, ref:d.ref, total:d.total, fee:p.fee, amt:amountOf(d.total,p.fee),
@@ -680,7 +698,8 @@ function render(){
     out.innerHTML=html; return;
   }
 
-  if(R.mSel==="fy2025-26"){
+  const fyRView = fyRange(R.mSel);
+  if(fyRView){
     const rows=[];
     const agg=l=>[l.length, l.reduce((a,r)=>a+r.amt,0), l.reduce((a,r)=>a+r.fee,0), l.reduce((a,r)=>a+r.total,0)];
     SALES_ORDER.forEach(n=>{ if(R.salesMap[n]){ const a=agg(R.salesMap[n]); rows.push(["销售",n,...a]); }});
@@ -688,7 +707,7 @@ function render(){
     const nq=R.noQuoter||[];
     if(nq.length){ const a=agg(nq); rows.push(["仅销售(无报价)","—",...a]); }
     const body=rows.map(r=>`<tr><td>${r[0]}</td><td><b>${r[1]}</b></td><td class="r num">${r[2]}</td><td class="r num amt">$${money(r[3])}</td><td class="r num">$${money(r[4])}</td><td class="r num">$${money(r[5])}</td></tr>`).join("");
-    html+=`<div class="role-band">— 财年总览 2025-26 (2025/7/1 – 2026/6/30) —</div>`;
+    html+=`<div class="role-band">— 财年总览 ${fyLabel(fyRView.y)} (${fyRView.y}/7/1 – ${fyRView.y+1}/6/30) —</div>`;
     html+=`<table><thead><tr><th>角色</th><th>人员</th><th class="r">单数</th><th class="r">金额(提成基数)</th><th class="r">安装费合计</th><th class="r">总收款(含GST)</th></tr></thead><tbody>${body}</tbody></table>`;
     html+=`<div class="note" style="margin:10px 0 20px">下方为各人员财年明细。内置快照仅含 2026 年 2–5 月;完整财年请「导入」monday 全量 CSV。提成实发请看「提成发放」视图。</div>`;
   }
@@ -716,7 +735,7 @@ function render(){
 =================================================================== */
 function renderPayout(){
   const R=LAST_RESULT, PO=R.payout; const out=document.getElementById("out");
-  const periodLabel = R.mSel==="all" ? "全部" : (R.mSel==="fy2025-26" ? "财年 2025-26" : R.mSel);
+  const periodLabel = R.mSel==="all" ? "全部" : (fyRange(R.mSel) ? "财年 "+fyLabel(fyRange(R.mSel).y) : R.mSel);
   const totalGross = PO.rows.reduce((a,r)=>a+r.gross,0);
   const totalNet   = PO.rows.reduce((a,r)=>a+r.net,0);
   document.getElementById("stats").innerHTML=
@@ -768,7 +787,7 @@ function renderPayout(){
 
 function renderBilled(){
   const R=LAST_RESULT, B=R.billed; const out=document.getElementById("out");
-  const periodLabel = R.mSel==="all" ? "全部" : (R.mSel==="fy2025-26" ? "财年 2025-26(按开单日期)" : R.mSel+"(按开单日期)");
+  const periodLabel = R.mSel==="all" ? "全部" : (fyRange(R.mSel) ? "财年 "+fyLabel(fyRange(R.mSel).y)+"(按开单日期)" : R.mSel+"(按开单日期)");
   document.getElementById("stats").innerHTML=
     `<div class="stat"><div class="k">已开单(单数)</div><div class="v g">${B.bAllInv}</div></div>`+
     `<div class="stat"><div class="k">已开单 Total(含GST)</div><div class="v y">$${money(B.bAllTot)}</div></div>`+
@@ -895,7 +914,7 @@ document.getElementById("legend").innerHTML=
   "<b>提成发放</b>:点上方「★ 提成发放」按钮,按每人比例算实发(已 ÷1.12 养老金)。比例在代码 <code>RATES</code> 配置处修改。<br>"+
   "<b>人员按钮</b>:点上方按钮只看某个销售/报价员的表(销售视图含其「无报价员」单)。点「全部」恢复。<br>"+
   "<b>订金/尾款</b>:Reference 含 deposit/balance 关键词的单,按同客户配对;只有该组全部 Full Paid 才计提成,否则进「待结清」。<b>需导入含 Payment Status 与客户名(Name 列)的完整 CSV 才生效</b>。<br>"+
-  "<b>财年总览</b>:月份下拉选「★ 财年总览 2025-26」即按 2025/7/1–2026/6/30 汇总。<br>"+
+  "<b>财年总览</b>:月份下拉选「★ 财年总览」即按该财年 7/1–次年 6/30 汇总;新财年每年 7 月自动出现。<br>"+
   "<b>更新数据</b>:monday 导出 board 为 CSV(含 Name、Reference、Total (AUD)、Payment Status、Full Paid 日期)→「导入」。「从 monday 更新」按钮需先部署后台并填 BACKEND_URL;否则会回退到 CSV 导入。<b>纯网页无法安全直连 monday。</b><br>"+
   "<b>密码</b>:在代码 ACCESS_PASSWORD 处修改。注意这是基础门,真正的外部加密访问需服务器端密码保护(如 Netlify/Vercel 的 password protection)。";
 
